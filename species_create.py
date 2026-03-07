@@ -22,11 +22,11 @@ random_seed = 12346
 
 # Birth/death statistics
 initial_birth_scale = 0.5
-death_waiting_distribution_param = 5
+death_waiting_distribution_param = 7
 death_waiting_distribution = np.random.exponential(death_waiting_distribution_param)
 
-# Number of existing cell copies at start
-num_extant = 200000
+# Number of final existing cells
+num_extant = 20000
 
 # number of cells to sample
 num_cells = 1000
@@ -137,12 +137,15 @@ bd_sim = cas.sim.ecDNABirthDeathSimulator(
     simulation_multiplier = sim_mult
 )
 ground_truth_tree = bd_sim.simulate_tree()
+print("Tree simulation complete")
 
 # subsample for cells
 subsampler = cas.sim.UniformLeafSubsampler(number_of_leaves = num_cells)
 ground_truth_tree = subsampler.subsample_leaves(ground_truth_tree)
 counts = ground_truth_tree.cell_meta
 ecDNA_species = list(counts.keys())
+# TODO: remove
+print(counts)
 
 # Sort genes into species
 gene_idx = 0
@@ -171,6 +174,8 @@ for i in range(len(ecDNA_species)) :
             species_to_gene[ecDNA_species[i]].append(curr_gene_name)
             gene_to_species[curr_gene_name].append(ecDNA_species[i])
 
+print("Simulating additional counts")
+
 # Sort out additional copies per ecDNA
 gene_to_species_mult = copy.deepcopy(gene_to_species)
 additional_counts_all = {}
@@ -191,6 +196,7 @@ for gene in gene_to_species_mult.keys() :
     for species in gene_to_species_mult[gene] :
         gene_cell_true_cn_dict[gene] += counts[species].values
 
+print("Adding noise")
 
 cbg_true_matrix = np.column_stack([gene_cell_true_cn_dict[g] for g in gene_cell_true_cn_dict.keys()])
 cbg_noisy_matrix = np.zeros_like(cbg_true_matrix, dtype=int)
@@ -227,7 +233,7 @@ with open(metadata_out, 'w') as f :
     f.write(f"Seed:\t{random_seed}\n")
     f.write(f"Birth Param:\t{initial_birth_scale}\n")
     f.write(f"Death Param:\t{death_waiting_distribution_param}\n")
-    f.write(f"Sim Start Cells:\t{num_extant}\n")
+    f.write(f"Sim End Cells:\t{num_extant}\n")
     f.write(f"Cell Count:\t{num_cells}\n")
     f.write('\n')
     f.write(f"Initial Copy Numbers:\t")
