@@ -66,7 +66,7 @@ class atacDataSimulation():
 
         # Birth/death statistics
         initial_birth_scale = 0.5,
-        death_waiting_distribution = np.random.exponential(7),
+        death_waiting_distribution_param = 7,
 
         # Number of final existing cells
         num_extant = 20000,
@@ -121,7 +121,8 @@ class atacDataSimulation():
         self.cosegregation = cosegregation
         self.mat = mat
         self.capacity = capacity
-        self.death_waiting_distribution = death_waiting_distribution
+        self.death_waiting_distribution_param = death_waiting_distribution_param
+        self.death_waiting_distribution = np.random.exponential(death_waiting_distribution_param)
 
     # Parameter to add different counts for each gene on each ecDNA (extra counts, so default is 0)
     def additional_count_func(self, length) :
@@ -152,7 +153,7 @@ class atacDataSimulation():
             num_extant = self.num_extant,
             random_seed=self.random_seed,
             initial_copy_number = self.initial_copy_number_array,
-            splitting_function = lambda c, x: c+np.random.binomial(x, p=0.5), # this means ecDNA is inherited randomly
+            splitting_function = lambda c, x: c+np.random.binomial(x, p=0.5),
             fitness_array = self.fitness_array,
             cosegregation_coefficient = self.cosegregation,
             coeff_venn = self.coeffs,
