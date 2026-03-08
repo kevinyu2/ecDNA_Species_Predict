@@ -213,7 +213,7 @@ for cell in range(num_cells):
 # add gaussian noise
 noise = np.random.normal(loc=0, scale=noise_scale, size=cbg_noisy_matrix.shape)
 cbg_noisy_matrix = cbg_noisy_matrix + noise
-cbg_true_matrix = np.maximum(cbg_true_matrix, 0)
+cbg_noisy_matrix = np.maximum(cbg_noisy_matrix, 0)
 
 
 # Export matrix
