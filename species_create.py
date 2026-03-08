@@ -202,12 +202,15 @@ cbg_noisy_matrix = np.zeros_like(cbg_true_matrix, dtype=int)
 
 # Pick out of multinomial dist
 for cell in range(num_cells):
-    p = cbg_true_matrix[cell] / cbg_true_matrix[cell].sum()
-    cbg_noisy_matrix[cell] = np.random.multinomial(cbg_true_matrix[cell].sum() * multinomial_mult, p)
+    row_sum = cbg_true_matrix[cell].sum()
+    if row_sum != 0 :
+        p = cbg_true_matrix[cell] / row_sum
+        cbg_noisy_matrix[cell] = np.random.multinomial(row_sum * multinomial_mult, p)
 
 # add gaussian noise
 noise = np.random.normal(loc=0, scale=noise_scale, size=cbg_noisy_matrix.shape)
 cbg_noisy_matrix = cbg_noisy_matrix + noise
+cbg_true_matrix = np.maximum(cbg_true_matrix, 0)
 
 
 # Export matrix
