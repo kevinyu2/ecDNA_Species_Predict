@@ -117,7 +117,7 @@ class atacDataSimulation():
         self.initial_birth_scale = initial_birth_scale
         self.num_extant = num_extant
         self.num_cells = num_cells
-        self.coeffs = coeffs,
+        self.coeffs = coeffs
         self.cosegregation = cosegregation
         self.mat = mat
         self.capacity = capacity
@@ -138,8 +138,6 @@ class atacDataSimulation():
     def run_sim(self) :
         gene_counts_save = copy.deepcopy(self.gene_counts)
         gene_overlap_save = copy.deepcopy(self.gene_overlap)
-
-        print(self.coeffs)
 
         # Get output locations
         metadata_out = f'{self.out_dir}/{self.run_name}_metadata.txt'
