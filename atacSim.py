@@ -139,6 +139,7 @@ class atacDataSimulation():
         gene_counts_save = copy.deepcopy(self.gene_counts)
         gene_overlap_save = copy.deepcopy(self.gene_overlap)
 
+        print(self.coeffs)
 
         # Get output locations
         metadata_out = f'{self.out_dir}/{self.run_name}_metadata.txt'
@@ -157,7 +158,7 @@ class atacDataSimulation():
             fitness_array = self.fitness_array,
             cosegregation_coefficient = self.cosegregation,
             coeff_venn = self.coeffs,
-            cosegregation_type = "venn",
+            cosegregation_type = self.cosegregation_type,
             coeff_matrix_sim = self.mat,
             species_capacity = self.capacity,
             simulation_multiplier = self.sim_mult
