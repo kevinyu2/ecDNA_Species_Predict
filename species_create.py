@@ -112,6 +112,9 @@ def additional_count_func(length, chance_to_change, change_distribution, change_
 
 # Ensure dimensionality
 num_ecDNA = len(gene_counts)
+gene_counts_save = copy.deepcopy(gene_counts)
+gene_overlap_save = copy.deepcopy(gene_overlap)
+
 assert(num_ecDNA == len(initial_copy_number_array))
 
 # Get output locations
@@ -144,7 +147,7 @@ subsampler = cas.sim.UniformLeafSubsampler(number_of_leaves = num_cells)
 ground_truth_tree = subsampler.subsample_leaves(ground_truth_tree)
 counts = ground_truth_tree.cell_meta
 ecDNA_species = list(counts.keys())[0:len(initial_copy_number_array)]
-print(ecDNA_species)
+print(f"ecDNA Names: {ecDNA_species}")
 
 # Sort genes into species
 gene_idx = 0
@@ -244,9 +247,9 @@ with open(metadata_out, 'w') as f :
     print(fitness_array, file = f)
     f.write('\n')
     f.write(f"Cosegregation type:\t{cosegregation_type}\n")
-    if cosegregation_type == "venn" :
+    if cosegregation_type == "coefficient" :
         f.write(f"Cosegregation coefficient:\t{cosegregation}\n")
-    elif cosegregation_type == 'simuation' :
+    elif cosegregation_type == 'venn' :
         f.write(f"Venn coefficients:\n")
         print(coeffs, file = f)
     else :
@@ -257,9 +260,9 @@ with open(metadata_out, 'w') as f :
         f.write(f"Simulation runs per ecDNA:\t{sim_mult}\n")
     f.write('\n')
 
-    f.write(f"Gene counts:\t{gene_counts}\n")
+    f.write(f"Gene counts:\t{gene_counts_save}\n")
     f.write(f"Gene overlap:\n")
-    print(gene_overlap, file = f)
+    print(gene_overlap_save, file = f)
     f.write(f"Additional copy chance:\t{chance_to_change}\n")
     f.write(f"Change distribution parameter:\t{change_distribution_param}\n")
     f.write('\n')
