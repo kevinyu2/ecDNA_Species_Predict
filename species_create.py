@@ -143,9 +143,8 @@ print("Tree simulation complete")
 subsampler = cas.sim.UniformLeafSubsampler(number_of_leaves = num_cells)
 ground_truth_tree = subsampler.subsample_leaves(ground_truth_tree)
 counts = ground_truth_tree.cell_meta
-ecDNA_species = list(counts.keys())
-# TODO: remove
-print(counts)
+ecDNA_species = list(counts.keys())[0:len(initial_copy_number_array)]
+print(ecDNA_species)
 
 # Sort genes into species
 gene_idx = 0
