@@ -50,6 +50,7 @@ num_extant = 20000
 num_cells_mean = 2000
 capacity = [3,3,3]
 sim_mult = 1.5
+noise_scale = 1
 
 ##################################################################
 
@@ -173,8 +174,8 @@ def generate_gene_overlap(gene_counts, gene_overlap_chance) :
                     remaining[i] -= val
 
     # Remove singles
-    # for s in singles:
-    #     del regions[s]
+    for s in singles:
+        del regions[s]
 
     return regions
 
@@ -190,7 +191,7 @@ for i in range(num_attempts) :
         gene_overlap = generate_gene_overlap(gene_counts, gene_overlap_chance)
 
     # Vary number of cells (large scale)
-    num_cells =  np.random.normal(loc=num_cells_mean, scale=300)
+    num_cells = np.random.normal(loc=num_cells_mean, scale=300)
     num_cells = np.round(num_cells).astype(int)
     num_cells = max(num_cells, 500)
 
@@ -210,7 +211,7 @@ for i in range(num_attempts) :
             cosegregation_type = cosegregation_type,
             gene_counts = gene_counts,
             multinomial_mult = multinomial_mult,
-            noise_scale = 1,
+            noise_scale = noise_scale,
             gene_overlap = gene_overlap,
             chance_to_change = chance_to_change,
             change_distribution = np.random.geometric,

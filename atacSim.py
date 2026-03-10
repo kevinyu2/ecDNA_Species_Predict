@@ -217,7 +217,8 @@ class atacDataSimulation():
         # Match each gene to a vector of observed copy numbers
         gene_cell_true_cn_dict = {}
         for gene in gene_to_species_mult.keys() :
-            gene_cell_true_cn_dict[gene] = np.zeros(self.num_cells)
+            # 2 for chromosomal copies
+            gene_cell_true_cn_dict[gene] = np.full(self.num_cells, 2)
             for species in gene_to_species_mult[gene] :
                 gene_cell_true_cn_dict[gene] += counts[species].values
 
