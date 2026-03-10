@@ -3,19 +3,22 @@ import pandas as pd
 from atacSim import atacDataSimulation
 import itertools
 import random
+from cassiopeia.mixins.errors import ecDNABirthDeathSimulatorError
 
 ##################################################################
 # Master controls
 ##################################################################
 
+num_attempts = 10
 out_dir = '../three_ecDNA'
 
 species_count = 3
 # "coefficient", "venn", or "simulation"
 cosegregation_type = "simulation"
 
-# TODO: allow genes to belong to multiple species
-allow_gene_overlap = False
+# Allow genes to belong to multiple species
+allow_gene_overlap = True
+gene_overlap_chance = 0.5
 
 # Allow cosegregation
 allow_cosegregation = True
@@ -39,7 +42,6 @@ chance_to_change = 0.1
 
 gene_count_mean = 10
 copy_number_initial_mean = 6
-num_attempts = 10
 change_distribution_param = 0.8
 multinomial_mult = 1
 initial_birth_scale = 0.5
@@ -69,14 +71,13 @@ print(f"fitness array: {fitness_array}")
 def init_array_random(n, center, std, min):
     arr = np.random.normal(loc=center, scale=std, size=n)
     arr = np.round(arr).astype(int)
+    min = max(min, 1)
     arr = np.clip(arr, min, None)
     return arr
 
 # Generate venn diagram coeffs stochastically
-def generate_venn(n, cosegregation_strength, seed=None):
+def generate_venn(n, cosegregation_strength):
     intersection_limiter = 1 - cosegregation_strength
-    if seed is not None:
-        random.seed(seed)
 
     # remaining capacity for each circle
     remaining = {i: 1.0 for i in range(n)}
@@ -135,12 +136,58 @@ def generate_coseg_matrix(matrix_dim, mean, allow_self_combine) :
             matrix[j][i] = random_val
     return matrix
 
+def generate_gene_overlap(gene_counts, gene_overlap_chance) :
+    # remaining capacity for each circle
+    remaining = {i: gene_counts[i] for i in range(len(gene_counts))}
+    regions = {}
+
+    singles = [(i,) for i in range(len(gene_counts))]
+    intersections = []
+    for r in range(2, len(gene_counts)+1):
+        intersections.extend(itertools.combinations(range(len(gene_counts)), r))
+
+    # shuffle intersection order
+    random.shuffle(intersections)
+
+    # initialize singles with random values (to prefer the singles)
+    for s in singles:
+        i = s[0]
+        if gene_counts[i] >= 2:
+            val = random.randint(1,gene_counts[i]-1)
+        else :
+            val = 1
+        regions[s] = val
+        remaining[i] -= val
+
+    # fill intersections
+    for inter in intersections:
+        if random.random() < gene_overlap_chance :
+
+            # max allowed without exceeding circle capacity
+            max_allowed = min(remaining[i] for i in inter)
+            if max_allowed > 0:
+                val = random.randint(0,max_allowed)
+                val = max(val, 1)
+                regions[inter] = val
+                for i in inter:
+                    remaining[i] -= val
+
+    # Remove singles
+    # for s in singles:
+    #     del regions[s]
+
+    return regions
+
+##############################################################
+
 failures = 0
 for i in range(num_attempts) :
     initial_copy_number_array = init_array_random(species_count, copy_number_initial_mean, 1, 5)
     gene_counts = init_array_random(species_count, gene_count_mean, 3, 5)
 
     gene_overlap = {}
+    if allow_gene_overlap :
+        gene_overlap = generate_gene_overlap(gene_counts, gene_overlap_chance)
 
     # Vary number of cells (large scale)
     num_cells =  np.random.normal(loc=num_cells_mean, scale=300)
