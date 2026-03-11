@@ -297,6 +297,9 @@ class atacDataSimulation():
             f.write(f"Additional copy chance:\t{self.chance_to_change}\n")
             f.write(f"Change distribution parameter:\t{self.change_distribution_param}\n")
             f.write('\n')
+            f.write(f'Depth mean:\t{self.depth_mean}\n')
+            f.write(f'Depth std:\t{self.depth_std}\n')
+            f.write('\n')
 
             f.write("--SIMULATED PARAMETERS--\n")
             for species, add in additional_counts_all.items() :
@@ -306,6 +309,8 @@ class atacDataSimulation():
             for a, b in combinations(ecDNA_species, 2):
                 correlation = scipy.stats.pearsonr(counts[a].values, counts[b].values)[0]
                 f.write(f'Correlation between {a} and {b}: {correlation}\n')
+
+            # TODO: print depth of all cells?
 
         self.cbg_noisy_matrix = cbg_noisy_matrix
         self.cbg_true_matrix = cbg_true_matrix

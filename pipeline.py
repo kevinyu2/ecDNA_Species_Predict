@@ -10,7 +10,7 @@ from cassiopeia.mixins.errors import ecDNABirthDeathSimulatorError
 ##################################################################
 
 num_attempts = 10
-out_dir = '../three_ecDNA'
+out_dir = '../three_ecDNA_lowdepth'
 
 species_count = 3
 # "coefficient", "venn", or "simulation"
@@ -38,7 +38,8 @@ chance_to_change = 0.1
 copy_number_initial_mean = 4
 
 # Read depth (expected number of times each gene is read by ATAC-seq). Greater makes the multinomial approximation more accurate
-depth = 0.5
+depth_mean = 0.5
+depth_std = 0.4
 
 ##################################################################
 # Don't Need to Change
@@ -212,7 +213,8 @@ for i in range(num_attempts) :
             fitness_array = fitness_array,
             cosegregation_type = cosegregation_type,
             gene_counts = gene_counts,
-            depth = depth,
+            depth_mean = depth_mean,
+            depth_std = depth_std,
             noise_scale = noise_scale,
             gene_overlap = gene_overlap,
             chance_to_change = chance_to_change,
