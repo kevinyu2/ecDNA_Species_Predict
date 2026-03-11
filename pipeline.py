@@ -34,21 +34,23 @@ allow_self_combine = False
 # Chance to add extra counts of a gene in an ecDNA species
 chance_to_change = 0.1
 
+# Average number of copies of ecDNA to start with
+copy_number_initial_mean = 4
 
+# Read depth (expected number of times each gene is read by ATAC-seq). Greater makes the multinomial approximation more accurate
+depth = 0.5
 
 ##################################################################
 # Don't Need to Change
 ##################################################################
 
 gene_count_mean = 10
-copy_number_initial_mean = 6
 change_distribution_param = 0.8
-multinomial_mult = 1
 initial_birth_scale = 0.5
 death_waiting_distribution_param = 8
 num_extant = 20000
 num_cells_mean = 2000
-capacity = [3,3,3]
+capacity = np.full(species_count, 3)
 sim_mult = 1.5
 noise_scale = 1
 
@@ -183,7 +185,7 @@ def generate_gene_overlap(gene_counts, gene_overlap_chance) :
 
 failures = 0
 for i in range(num_attempts) :
-    initial_copy_number_array = init_array_random(species_count, copy_number_initial_mean, 1, 5)
+    initial_copy_number_array = init_array_random(species_count, copy_number_initial_mean, 2, 1)
     gene_counts = init_array_random(species_count, gene_count_mean, 3, 5)
 
     gene_overlap = {}
@@ -210,7 +212,7 @@ for i in range(num_attempts) :
             fitness_array = fitness_array,
             cosegregation_type = cosegregation_type,
             gene_counts = gene_counts,
-            multinomial_mult = multinomial_mult,
+            depth = depth,
             noise_scale = noise_scale,
             gene_overlap = gene_overlap,
             chance_to_change = chance_to_change,

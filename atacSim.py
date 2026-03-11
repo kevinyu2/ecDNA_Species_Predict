@@ -41,8 +41,9 @@ class atacDataSimulation():
         gene_counts,
 
         # After getting true sample counts, sample counts using multinomial
-        # This measures how many samples are drawn per true sample count
-        multinomial_mult = 1,
+        # This measures how many samples are drawn per true sample count (each cell drawn from gaussian with these stats, with a minimum of 0.1)
+        depth_mean = 1,
+        depth_std = 0.5,
         # Add some normally distributed noise
         noise_scale = 1,
 
@@ -106,7 +107,8 @@ class atacDataSimulation():
         self.fitness_array = fitness_array
         self.cosegregation_type = cosegregation_type
         self.gene_counts = gene_counts
-        self.multinomial_mult = multinomial_mult
+        self.depth_mean = depth_mean
+        self.depth_std = depth_std
         self.noise_scale = noise_scale
         self.gene_overlap = gene_overlap
         self.chance_to_change = chance_to_change
@@ -232,7 +234,12 @@ class atacDataSimulation():
             row_sum = cbg_true_matrix[cell].sum()
             if row_sum != 0 :
                 p = cbg_true_matrix[cell] / row_sum
-                cbg_noisy_matrix[cell] = np.random.multinomial(row_sum * self.multinomial_mult, p)
+
+                depth = np.random.normal(self.depth_mean, self.depth_std)
+                depth = max(depth, 0.1)
+
+                # depth defines sparsity/coverage, but it still gets normalized
+                cbg_noisy_matrix[cell] = np.random.multinomial(row_sum * depth, p) * (1 / depth)
 
         # add gaussian noise
         noise = np.random.normal(loc=0, scale=self.noise_scale, size=cbg_noisy_matrix.shape)
