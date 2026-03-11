@@ -6,9 +6,9 @@ from scipy.optimize import linear_sum_assignment
 import pandas as pd
 
 out_dir = '../sample_cNMF'
-out_name = "default_cNMF"
-cellbygene = "../sample_data/run_3_cellxgene.tsv"
-metadata_file = "../sample_data/run_3_metadata.txt"
+out_name = "low_depth_cNMF"
+cellbygene = "../low_depth/run_1_cellxgene.tsv"
+metadata_file = "../low_depth/run_1_metadata.txt"
 
 # Z score cutoff for inclusion of a gene in an ecDNA
 score_cutoff = 0

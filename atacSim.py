@@ -171,7 +171,15 @@ class atacDataSimulation():
         subsampler = cas.sim.UniformLeafSubsampler(number_of_leaves = self.num_cells)
         ground_truth_tree = subsampler.subsample_leaves(ground_truth_tree)
         counts = ground_truth_tree.cell_meta
+
         ecDNA_species = list(counts.keys())[0:len(self.initial_copy_number_array)]
+
+        # Tracks how much each ecDNA is present
+        species_percentages = {}
+        for species in ecDNA_species :
+            species_percentages[species] = counts[(counts[species] >= 1)].shape[0] / counts.shape[0] * 100
+
+        species_total_percentage = (counts[ecDNA_species] > 0).any(axis=1).mean() * 100
         print(f"ecDNA Names: {ecDNA_species}")
 
         # Sort genes into species
@@ -209,11 +217,12 @@ class atacDataSimulation():
         for species in species_to_gene.keys() :
             # Get counts of extras
             additional_counts = self.additional_count_func(len(species_to_gene[species]))
-            additional_counts_all[species] = additional_counts
+            additional_counts_all[species] = defaultdict(int)
             # Iterate through, for all above zero, append that number of the species to the dict
             for i, add in enumerate(additional_counts) :
                 if add > 0:
                     for copy_count in range(int(add)) :
+                        additional_counts_all[species][species_to_gene[species][i]] += 1
                         gene_to_species_mult[species_to_gene[species][i]].append(species)
 
         # Match each gene to a vector of observed copy numbers
@@ -230,6 +239,7 @@ class atacDataSimulation():
         cbg_noisy_matrix = np.zeros_like(cbg_true_matrix, dtype=int)
 
         # Pick out of multinomial dist
+        depth_tracker = []
         for cell in range(self.num_cells):
             row_sum = cbg_true_matrix[cell].sum()
             if row_sum != 0 :
@@ -237,6 +247,7 @@ class atacDataSimulation():
 
                 depth = np.random.normal(self.depth_mean, self.depth_std)
                 depth = max(depth, 0.1)
+                depth_tracker.append(depth)
 
                 # depth defines sparsity/coverage, but it still gets normalized
                 cbg_noisy_matrix[cell] = np.random.multinomial(row_sum * depth, p) * (1 / depth)
@@ -292,8 +303,6 @@ class atacDataSimulation():
             f.write('\n')
 
             f.write(f"Gene counts:\t{gene_counts_save}\n")
-            f.write(f"Gene overlap:\n")
-            print(gene_overlap_save, file = f)
             f.write(f"Additional copy chance:\t{self.chance_to_change}\n")
             f.write(f"Change distribution parameter:\t{self.change_distribution_param}\n")
             f.write('\n')
@@ -304,13 +313,21 @@ class atacDataSimulation():
             f.write("--SIMULATED PARAMETERS--\n")
             for species, add in additional_counts_all.items() :
                 print(f"Additional counts {species}:\t{add}", file = f)
+
             f.write('\n')
 
             for a, b in combinations(ecDNA_species, 2):
                 correlation = scipy.stats.pearsonr(counts[a].values, counts[b].values)[0]
                 f.write(f'Correlation between {a} and {b}: {correlation}\n')
 
-            # TODO: print depth of all cells?
+            f.write('\n')
+            for species, percent in species_percentages.items() :
+                f.write(f'Percent of cells with {species}:\t{percent}\n')
+            f.write(f"Total percentage of cells with ecDNA:\t{species_total_percentage}\n")
+
+            f.write('\nDepths:\n')
+            for i, depth in enumerate(depth_tracker) :
+                f.write(f"cell_{i}\t{depth}\n")
 
         self.cbg_noisy_matrix = cbg_noisy_matrix
         self.cbg_true_matrix = cbg_true_matrix
