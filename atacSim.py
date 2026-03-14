@@ -146,6 +146,8 @@ class atacDataSimulation():
         metadata_out = f'{self.out_dir}/{self.run_name}_metadata.txt'
         cellxgene_out = f'{self.out_dir}/{self.run_name}_cellxgene.tsv'
         cellxgene_noiseless_out = f'{self.out_dir}/{self.run_name}_cellxgene_NOISELESS.tsv'
+        speciesxgene_out = f'{self.out_dir}/{self.run_name}_cellxspecies.tsv'
+
         os.makedirs(self.out_dir, exist_ok=True)
 
         bd_sim = cas.sim.ecDNABirthDeathSimulator(
@@ -171,6 +173,7 @@ class atacDataSimulation():
         subsampler = cas.sim.UniformLeafSubsampler(number_of_leaves = self.num_cells)
         ground_truth_tree = subsampler.subsample_leaves(ground_truth_tree)
         counts = ground_truth_tree.cell_meta
+        counts.to_csv(speciesxgene_out, sep = '\t')
 
         ecDNA_species = list(counts.keys())[0:len(self.initial_copy_number_array)]
 
@@ -312,7 +315,10 @@ class atacDataSimulation():
 
             f.write("--SIMULATED PARAMETERS--\n")
             for species, add in additional_counts_all.items() :
-                print(f"Additional counts {species}:\t{add}", file = f)
+                f.write(f"Additional counts {species}:")
+                for key, value in add.items() :
+                    f.write(f"\t{key}:{value}")
+                f.write('\n')
 
             f.write('\n')
 

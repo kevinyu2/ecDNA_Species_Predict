@@ -4,6 +4,8 @@ import random
 from collections import defaultdict
 from scipy.optimize import linear_sum_assignment
 import pandas as pd
+import anndata as ad
+
 
 out_dir = '../sample_cNMF'
 out_name = "low_depth_cNMF"
@@ -17,6 +19,8 @@ n_iter = 100
 
 # Set if num is known, otherwise set as None, will try to figure out
 num_ecDNA = None
+# Numbers to check (if num_ecDNA is none)
+counts_to_check = np.arange(2,5)
 # parameter determining importance of error in choosing the best number of ecDNA
 error_weight = 1
 # stability - error_w * normalzied_error
@@ -26,7 +30,14 @@ error_w = 2
 
 # Run cNMF
 cnmf_obj = cNMF(output_dir=out_dir, name=out_name)
-cnmf_obj.prepare(counts_fn=cellbygene, components=np.arange(2,5), n_iter=n_iter, seed=random.randint(1,1000))
+if num_ecDNA is None :
+    cnmf_obj.prepare(counts_fn=cellbygene, tpm_fn = cellbygene, components=counts_to_check, n_iter=n_iter, seed=random.randint(1,1000))
+else :
+    cnmf_obj.prepare(counts_fn=cellbygene, tpm_fn = cellbygene, components=num_ecDNA, n_iter=n_iter, seed=random.randint(1,1000))
+
+input_counts = pd.read_csv(cellbygene, sep = '\t', index_col = 0)
+adata = ad.AnnData(input_counts)
+cnmf_obj.save_norm_counts(adata)
 cnmf_obj.factorize(worker_i=0, total_workers=1)
 cnmf_obj.combine()
 cnmf_obj.k_selection_plot()
@@ -84,15 +95,18 @@ for i, row in spectra_scores.iterrows() :
 
 # Find out which predicted ecDNA matches to which gt ecDNA
 # Uses hungarian algorithm, with distances defined by jaccard index between gene sets
-# TODO: hungarian algorithm when the number is wrong?
-def match_score(obs, gt) :
+def match_score(obs, gt):
 
     keys1 = list(obs.keys())
     keys2 = list(gt.keys())
 
-    n = len(keys1)
-    cost_matrix = np.zeros((n, n))
+    n1 = len(keys1)
+    n2 = len(keys2)
 
+    n = max(n1, n2)
+    cost_matrix = np.ones((n, n))
+
+    # fill real costs
     for i, k1 in enumerate(keys1):
         s1 = set(obs[k1])
         for j, k2 in enumerate(keys2):
@@ -102,13 +116,33 @@ def match_score(obs, gt) :
 
     row_ind, col_ind = linear_sum_assignment(cost_matrix)
 
-    # mapping from dict1 keys to dict2 keys
-    mapping = {keys1[i]: keys2[j] for i, j in zip(row_ind, col_ind)}
+    mapping = {}
+    new_counter = 1
 
-    avg_jaccard = np.mean([
-        len(set(obs[k1]) & set(gt[k2])) / len(set(obs[k1]) | set(gt[k2]))
-        for k1, k2 in mapping.items()
-    ])
+    for i, j in zip(row_ind, col_ind):
+        # Ignore dummy rows
+        if i >= n1:
+            continue
+
+        k1 = keys1[i]
+        if j < n2:
+            mapping[k1] = keys2[j]
+        else:
+            mapping[k1] = f"NEW_ecDNA_{new_counter}"
+            new_counter += 1
+
+    # compute average jaccard only for real matches
+    scores = []
+    for k1, k2 in mapping.items():
+        if k2.startswith("NEW_ecDNA"):
+            scores.append(0)
+        else:
+            s1 = set(obs[k1])
+            s2 = set(gt[k2])
+            scores.append(len(s1 & s2) / len(s1 | s2))
+
+    avg_jaccard = np.mean(scores)
+
     print(f"Best score: {avg_jaccard}")
     return mapping, avg_jaccard
 
@@ -128,8 +162,10 @@ with open(f"{out_dir}/{out_name}/{out_name}.predictions.txt", 'w') as f:
             f.write(f"\t{val}")
         f.write('\n')
     f.write('\n--SIMULATION PARAMETERS--\n')
+    f.write(f'Number of predicted species:\t{len(mapping)}\tTrue species number:\t{len(gt.keys())}\n')
     f.write(f'Spectra score cutoff:\t{score_cutoff}\n')
     f.write(f'Number of iterations:\t{n_iter}\n')
     f.write(f'Best species count:\t{num_ecDNA}\n')
     f.write(f'Best jaccard (species wise):\t{best_jaccard}\n')
-    # TODO: gene wise jaccard?
+    f.write(f"Mapping:\n")
+    print(mapping, file = f)
