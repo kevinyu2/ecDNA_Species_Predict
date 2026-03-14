@@ -8,9 +8,9 @@ import anndata as ad
 
 
 out_dir = '../sample_cNMF'
-out_name = "low_depth_cNMF"
-cellbygene = "../low_depth/run_1_cellxgene.tsv"
-metadata_file = "../low_depth/run_1_metadata.txt"
+out_name = "low_depth_cNMF_run3"
+cellbygene = "../low_depth/run_3_cellxgene.tsv"
+metadata_file = "../low_depth/run_3_metadata.txt"
 
 # Z score cutoff for inclusion of a gene in an ecDNA
 score_cutoff = 0
@@ -20,7 +20,7 @@ n_iter = 100
 # Set if num is known, otherwise set as None, will try to figure out
 num_ecDNA = None
 # Numbers to check (if num_ecDNA is none)
-counts_to_check = np.arange(2,5)
+counts_to_check = np.arange(2,4)
 # parameter determining importance of error in choosing the best number of ecDNA
 error_weight = 1
 # stability - error_w * normalzied_error

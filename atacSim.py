@@ -173,9 +173,13 @@ class atacDataSimulation():
         subsampler = cas.sim.UniformLeafSubsampler(number_of_leaves = self.num_cells)
         ground_truth_tree = subsampler.subsample_leaves(ground_truth_tree)
         counts = ground_truth_tree.cell_meta
-        counts.to_csv(speciesxgene_out, sep = '\t')
 
         ecDNA_species = list(counts.keys())[0:len(self.initial_copy_number_array)]
+
+        counts = counts[ecDNA_species]
+        counts.index = [f"cell_{i}" for i in range(len(counts))]
+        counts.to_csv(speciesxgene_out, sep = '\t')
+
 
         # Tracks how much each ecDNA is present
         species_percentages = {}
