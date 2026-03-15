@@ -24,7 +24,7 @@ num_ecDNA = None
 counts_to_check = np.arange(1,5)
 # parameter determining importance of error in choosing the best number of ecDNA
 # stability - error_w * normalzied_error
-error_w = 0.8
+error_w = 0.5
 
 #################################################################
 # Run cNMF
@@ -196,6 +196,23 @@ for i, row in spectra_scores.iterrows() :
         if row[species] > score_cutoff :
             matched_observed[i].append(mapping[species])
 
+species_to_gene = defaultdict(list)
+for key, val in matched_observed.items() :
+    for species in val :
+        species_to_gene[species].append(key)
+
+# Calculate extra genes from spectra
+spectra_consensus = pd.read_csv(f"{out_dir}/{out_name}/{out_name}.spectra.k_{num_ecDNA}.dt_0_01.consensus.txt", sep = '\t', index_col = 0)
+spectra_consensus.index = "pred_ecDNA_" + spectra_consensus.index.astype(str)
+spectra_consensus.index = spectra_consensus.index.map(mapping)
+
+gene_counts = spectra_consensus.copy()
+gene_counts[:] = 0
+for species, gene_list in species_to_gene.items() :
+    min_val = spectra_consensus.loc[species, species_to_gene[species]].min()
+    for gene in gene_list :
+        gene_counts.loc[species, gene] = np.round(spectra_consensus.loc[species, gene]/min_val)
+
 with open(f"{out_dir}/{out_name}/{out_name}.predictions.txt", 'w') as f:
     f.write("--PREDICTED--\n")
     for key in spectra_scores.index :
@@ -211,3 +228,11 @@ with open(f"{out_dir}/{out_name}/{out_name}.predictions.txt", 'w') as f:
     f.write(f'Best jaccard (species wise):\t{best_jaccard}\n')
     f.write(f"Mapping:\n")
     print(mapping, file = f)
+    f.write(f"Extra counts:\n")
+    for i, row in gene_counts.iterrows() :
+        f.write(f"{i}:")
+        for gene in gene_counts.columns :
+            if row[gene] > 1 :
+                f.write(f"\t{gene}:\t{row[gene]-1}")
+        f.write('\n')
+
