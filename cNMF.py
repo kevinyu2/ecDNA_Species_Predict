@@ -5,12 +5,13 @@ from collections import defaultdict
 from scipy.optimize import linear_sum_assignment
 import pandas as pd
 import anndata as ad
-
+import scipy.sparse as sp
+import scanpy as sc
 
 out_dir = '../sample_cNMF'
-out_name = "low_depth_cNMF_run3"
-cellbygene = "../low_depth/run_3_cellxgene.tsv"
-metadata_file = "../low_depth/run_3_metadata.txt"
+out_name = "3ecDNA_cNMF_run5"
+cellbygene = "../3ecDNA_data/run_5_cellxgene.tsv"
+metadata_file = "../3ecDNA_data/run_5_metadata.txt"
 
 # Z score cutoff for inclusion of a gene in an ecDNA
 score_cutoff = 0
@@ -20,20 +21,26 @@ n_iter = 100
 # Set if num is known, otherwise set as None, will try to figure out
 num_ecDNA = None
 # Numbers to check (if num_ecDNA is none)
-counts_to_check = np.arange(2,4)
+counts_to_check = np.arange(1,5)
 # parameter determining importance of error in choosing the best number of ecDNA
-error_weight = 1
 # stability - error_w * normalzied_error
-error_w = 2
+error_w = 0.8
 
 #################################################################
-
 # Run cNMF
 cnmf_obj = cNMF(output_dir=out_dir, name=out_name)
+check_one = False
 if num_ecDNA is None :
-    cnmf_obj.prepare(counts_fn=cellbygene, tpm_fn = cellbygene, components=counts_to_check, n_iter=n_iter, seed=random.randint(1,1000))
+    if 1 in counts_to_check :
+        cnmf_obj.prepare(counts_fn=cellbygene, tpm_fn = cellbygene, components=counts_to_check[1:], n_iter=n_iter, seed=random.randint(1,1000))
+        check_one = True
+
+    else :
+        cnmf_obj.prepare(counts_fn=cellbygene, tpm_fn = cellbygene, components=counts_to_check, n_iter=n_iter, seed=random.randint(1,1000))
+
 else :
-    cnmf_obj.prepare(counts_fn=cellbygene, tpm_fn = cellbygene, components=num_ecDNA, n_iter=n_iter, seed=random.randint(1,1000))
+    cnmf_obj.prepare(counts_fn=cellbygene, components=num_ecDNA, n_iter=n_iter, seed=random.randint(1,1000))
+
 
 input_counts = pd.read_csv(cellbygene, sep = '\t', index_col = 0)
 adata = ad.AnnData(input_counts)
@@ -52,15 +59,50 @@ if num_ecDNA is None :
         columns=npz["columns"]
     )
 
+    # Include 1 (stability always at 1)
+    if check_one :
+        cnmf_obj_1 = cNMF(output_dir=out_dir, name=out_name)
+
+        cnmf_obj_1.prepare(counts_fn=cellbygene, tpm_fn = cellbygene, components=1, n_iter=n_iter, seed=random.randint(1,1000))
+        cnmf_obj_1.save_norm_counts(adata)
+        cnmf_obj_1.factorize(worker_i=0, total_workers=1)
+        cnmf_obj_1.combine()
+
+        
+        norm_counts = sc.read(cnmf_obj_1.paths['normalized_counts'])
+
+        with np.load(cnmf_obj_1.paths['merged_spectra']%1, allow_pickle=True) as f:
+            obj = pd.DataFrame(**f)
+            spectra = obj
+        median_spectra = pd.DataFrame(spectra.median(axis=0)).T
+        median_spectra = (median_spectra.T / median_spectra.sum(1)).T
+        rf_usages = cnmf_obj_1.refit_usage(norm_counts.X, median_spectra)
+        rf_usages = pd.DataFrame(rf_usages, index=norm_counts.obs.index)
+        rf_pred = rf_usages.dot(median_spectra)
+
+        if sp.issparse(norm_counts.X):
+            prediction_error = ((norm_counts.X.todense() - rf_pred) ** 2).sum().sum()
+        else:
+            prediction_error = ((norm_counts.X - rf_pred) ** 2).sum().sum()
+
+        new_row = pd.DataFrame([{'k' : 1, 'local_density_threshold' : 0.5, "silhouette" : 1, "prediction_error" : prediction_error}])
+        k_df = pd.concat([k_df, new_row], ignore_index=True)
+
     min_score = min(k_df['prediction_error'])
     max_score = max(k_df['prediction_error'])
 
     k_df['normalized_prediction_error'] = (k_df['prediction_error'] - min_score) / (max_score - min_score)
-    k_df['score'] = k_df['silhouette'] - error_weight * k_df['normalized_prediction_error']
+    k_df['score'] = k_df['silhouette'] - error_w * k_df['normalized_prediction_error']
 
     num_ecDNA = int(k_df.loc[k_df['score'].idxmax()]['k'])
     print(f"Number of ecDNA chosen: {num_ecDNA}")
 
+
+if num_ecDNA != 1 :
+    cnmf_obj.consensus(k=num_ecDNA, density_threshold=0.01)
+    usage, spectra_scores, spectra_tpm, top_genes = cnmf_obj.load_results(K=num_ecDNA, density_threshold=0.01,  norm_usage = False)
+else :
+    usage, spectra_scores, spectra_tpm, top_genes = cnmf_obj_1.load_results(K=1, density_threshold=0.01, norm_usage = False)
 
 cnmf_obj.consensus(k=num_ecDNA, density_threshold=0.01)
 usage, spectra_scores, spectra_tpm, top_genes = cnmf_obj.load_results(K=num_ecDNA, density_threshold=0.01)
