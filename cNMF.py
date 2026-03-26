@@ -9,9 +9,9 @@ import scipy.sparse as sp
 import scanpy as sc
 
 out_dir = '../sample_cNMF'
-out_name = "3ecDNA_cNMF_run5"
-cellbygene = "../3ecDNA_data/run_5_cellxgene.tsv"
-metadata_file = "../3ecDNA_data/run_5_metadata.txt"
+out_name = "low_depth_cNMF_run0"
+cellbygene = "../low_depth/run_0_cellxgene.tsv"
+metadata_file = "../low_depth/run_0_metadata.txt"
 
 # Z score cutoff for inclusion of a gene in an ecDNA
 score_cutoff = 0
@@ -24,7 +24,7 @@ num_ecDNA = None
 counts_to_check = np.arange(1,5)
 # parameter determining importance of error in choosing the best number of ecDNA
 # stability - error_w * normalzied_error
-error_w = 0.5
+error_w = 0.1
 
 #################################################################
 # Run cNMF
@@ -94,6 +94,7 @@ if num_ecDNA is None :
     k_df['normalized_prediction_error'] = (k_df['prediction_error'] - min_score) / (max_score - min_score)
     k_df['score'] = k_df['silhouette'] - error_w * k_df['normalized_prediction_error']
 
+    print(k_df)
     num_ecDNA = int(k_df.loc[k_df['score'].idxmax()]['k'])
     print(f"Number of ecDNA chosen: {num_ecDNA}")
 
