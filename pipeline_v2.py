@@ -181,7 +181,7 @@ for species_count in species_counts :
         capacity = np.full(species_count, capacities)
 
 
-        out_dir = f"{out_dir_main}/{species_count}_species_{average_combination_chance}_comb"
+        out_dir = f"{out_dir_root}/{species_count}_species_{average_combination_chance}_comb"
         os.makedirs(out_dir, exist_ok= True)
 
         failures = 0
