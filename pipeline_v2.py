@@ -6,6 +6,7 @@ import itertools
 import random
 from cassiopeia.mixins.errors import ecDNABirthDeathSimulatorError
 import os
+import math
 
 ##################################################################
 # Master controls
@@ -50,7 +51,7 @@ average_combination_chances = [0,0.2,0.4,0.6,0.8]
 allow_self_combine = False
 
 out_dir_root = f"{out_dir_main}/fmax_{fitness_max}_overlap_{gene_overlap_proportion}_extracounts_{chance_to_change}_depth_{depth_mean}"
-gene_count_total = 60
+gene_count_total = 30
 gene_count_std = 0
 change_distribution_param = 0.8
 initial_birth_scale = 0.5
@@ -158,7 +159,7 @@ def generate_gene_overlap(counts, overlap_prop):
         all_intersections.extend(itertools.combinations(range(n), r))
     
     for i, count in enumerate(counts):
-        num_overlap = int(round(count * overlap_prop))
+        num_overlap = int(math.ceil(count * overlap_prop))
         
         # Only look at intersections from that set
         valid_intersections = [comb for comb in all_intersections if i in comb]
