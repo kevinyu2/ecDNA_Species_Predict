@@ -1,3 +1,9 @@
+########################################################################
+# Runs cNMF on simulated data and generates statistics
+# Usage: cNMF_pipeline.py [run dir (should have the run info in name)] [out dir (main folder, automatically generates specific name)]
+########################################################################
+
+import sys
 from cnmf import cNMF
 import numpy as np
 import random
@@ -17,23 +23,25 @@ import shutil
 # Z score cutoff for inclusion of a gene in an ecDNA
 score_cutoff = 0
 # Number of NMFs to run
-n_iter = 20
+n_iter = 50
 
 # True means we provide to the program the exact number of ecDNA
 know_ecDNA = False
 # Numbers to check (if num_ecDNA is none)
-counts_to_check = np.arange(1,4)
+counts_to_check = np.arange(1,7)
 # parameter determining importance of error in choosing the best number of ecDNA
 # stability - error_w * normalzied_error
 error_w = 0.1
 
 density_threshold = 0.1
 
-# Data directory (with ALL the data!)
-full_data_dir = '../pipeline_data_small'
+# directory with the data of the run
+run_dir = sys.argv[1]
 # Full location of where we print things
-full_out_dir = f'../pipeline_out/cNMF_countprov_{int(know_ecDNA)}_errorw_{error_w}'
-full_result_dir = f'../pipeline_out/cNMF_results_countprov_{int(know_ecDNA)}_errorw_{error_w}'
+out_dir = sys.argv[2
+                   ]
+full_out_dir = f'{out_dir}/cNMF_countprov_{int(know_ecDNA)}_errorw_{error_w}'
+full_result_dir = f'{out_dir}/cNMF_results_countprov_{int(know_ecDNA)}_errorw_{error_w}'
 
 
 #################################################
@@ -272,69 +280,76 @@ def cNMF_run(out_dir, out_name, cellbygene, cellbyspecies, metadata_file, score_
 
     return len(usage_df.columns), best_jaccard, avg_corr
 
-for run_dir in Path(full_data_dir).glob("*"):
-    if run_dir.is_dir():
-        run_results_dir = f"{full_result_dir}/{run_dir.name}/"
-        os.makedirs(run_results_dir, exist_ok=True)
 
-        # save results in pandas tsv
-        run_predicted_species_counts_file = f"{run_results_dir}/species_counts.tsv"
-        run_jaccard_file = f"{run_results_dir}/jaccard.tsv"
-        run_avg_corr_file = f"{run_results_dir}/corr.tsv"
+run_results_dir = f"{full_result_dir}/{run_dir.name}/"
+os.makedirs(run_results_dir, exist_ok=True)
 
-        run_predicted_species_counts_list = []
-        run_jaccard_list = []
-        run_avg_corr_list = []
+# save results in pandas tsv
+run_predicted_species_counts_file = f"{run_results_dir}/species_counts.tsv"
+run_jaccard_file = f"{run_results_dir}/jaccard.tsv"
+run_avg_corr_file = f"{run_results_dir}/corr.tsv"
 
-        for spec_dir in Path(run_dir).glob("*"):
-            # Should be in the file names
-            num_ecDNA_true = int(spec_dir.name.split('_')[0])
-            comb_chance = float(spec_dir.name.split('_')[2])
-            print("SPEC DIR")
-            print(spec_dir)
+run_predicted_species_counts_list = []
+run_jaccard_list = []
+run_avg_corr_list = []
 
-
-            num_ecDNA = None
-            if know_ecDNA :
-                num_ecDNA = [num_ecDNA_true]
-
-            run_out_dir = f"{full_out_dir}/{run_dir.name}/{spec_dir.name}/"
-            os.makedirs(run_out_dir, exist_ok=True)
-
-            # Temporary dicts to turn into dataframe
-            run_predicted_species_counts = {"num_ecDNA_true" : num_ecDNA_true, "comb_chance" : comb_chance}
-            run_jaccard = {"num_ecDNA_true" : num_ecDNA_true, "comb_chance" : comb_chance}
-            run_avg_corr = {"num_ecDNA_true" : num_ecDNA_true, "comb_chance" : comb_chance}
+for spec_dir in Path(run_dir).glob("*"):
+    # Should be in the file names
+    num_ecDNA_true = int(spec_dir.name.split('_')[0])
+    comb_chance = float(spec_dir.name.split('_')[2])
+    print("SPEC DIR")
+    print(spec_dir)
 
 
-            for cellbygene_path in Path(spec_dir).glob("*_cellxgene.tsv") :
-                cellbygene = str(cellbygene_path)
-                metadata_file = cellbygene.replace("cellxgene.tsv", "metadata.txt")
-                cellbyspecies = cellbygene.replace("cellxgene.tsv", "cellxspecies.tsv")
-                out_name = cellbygene_path.name.split("_cellxgene.tsv")[0]
-                print("OUT NAME")
-                print(out_name)
-                try :
-                    predicted_species_count, jaccard, avg_corr = cNMF_run(run_out_dir, out_name, cellbygene, cellbyspecies, metadata_file, score_cutoff, n_iter, num_ecDNA, counts_to_check, error_w, density_threshold)
-                except Exception as e :
-                    print(f"Error: {e}")
-                    predicted_species_count, jaccard, avg_corr = 0,0,0
-                run_predicted_species_counts[out_name] = predicted_species_count
-                run_jaccard[out_name] = jaccard
-                run_avg_corr[out_name] = avg_corr
+    num_ecDNA = None
+    if know_ecDNA :
+        num_ecDNA = [num_ecDNA_true]
 
-                print("UPDATES")
-                print(run_jaccard)
-                print(run_predicted_species_counts)
-                print(run_avg_corr)
+    run_out_dir = f"{full_out_dir}/{run_dir.name}/{spec_dir.name}/"
+    os.makedirs(run_out_dir, exist_ok=True)
 
-            run_predicted_species_counts_list.append(run_predicted_species_counts)
-            run_jaccard_list.append(run_jaccard)
-            run_avg_corr_list.append(run_avg_corr)
+    # Temporary dicts to turn into dataframe
+    run_predicted_species_counts = {"num_ecDNA_true" : num_ecDNA_true, "comb_chance" : comb_chance}
+    run_jaccard = {"num_ecDNA_true" : num_ecDNA_true, "comb_chance" : comb_chance}
+    run_avg_corr = {"num_ecDNA_true" : num_ecDNA_true, "comb_chance" : comb_chance}
 
-        (pd.DataFrame(run_predicted_species_counts_list)).to_csv(run_predicted_species_counts_file, index = None, sep = '\t')
-        (pd.DataFrame(run_jaccard_list)).to_csv(run_jaccard_file, index = None, sep = '\t')
-        (pd.DataFrame(run_avg_corr_list)).to_csv(run_avg_corr_file, index = None, sep = '\t')
+
+    for cellbygene_path in Path(spec_dir).glob("*_cellxgene.tsv") :
+        cellbygene = str(cellbygene_path)
+        metadata_file = cellbygene.replace("cellxgene.tsv", "metadata.txt")
+        cellbyspecies = cellbygene.replace("cellxgene.tsv", "cellxspecies.tsv")
+        out_name = cellbygene_path.name.split("_cellxgene.tsv")[0]
+        print("OUT NAME")
+        print(out_name)
+
+        # Subtract 2 for the chromosomal copies
+        cellbygene_temp = pd.read_csv(cellbygene_path, sep = '\t', index_col = 0)
+        cellbygene_temp = cellbygene_temp - 2
+        cellbygene_temp = cellbygene_temp.clip(lower=0)
+        cellbygene_temp_path = cellbygene.replace("cellxgene.tsv", "cellxgene_temp.tsv")
+        cellbygene_temp.to_csv(cellbygene_temp_path, sep = '\t')
+
+        try :
+            predicted_species_count, jaccard, avg_corr = cNMF_run(run_out_dir, out_name, cellbygene_temp_path, cellbyspecies, metadata_file, score_cutoff, n_iter, num_ecDNA, counts_to_check, error_w, density_threshold)
+        except Exception as e :
+            print(f"Error: {e}")
+            predicted_species_count, jaccard, avg_corr = 0,0,0
+        run_predicted_species_counts[out_name] = predicted_species_count
+        run_jaccard[out_name] = jaccard
+        run_avg_corr[out_name] = avg_corr
+
+        print("UPDATES")
+        print(run_jaccard)
+        print(run_predicted_species_counts)
+        print(run_avg_corr)
+
+    run_predicted_species_counts_list.append(run_predicted_species_counts)
+    run_jaccard_list.append(run_jaccard)
+    run_avg_corr_list.append(run_avg_corr)
+
+(pd.DataFrame(run_predicted_species_counts_list)).to_csv(run_predicted_species_counts_file, index = None, sep = '\t')
+(pd.DataFrame(run_jaccard_list)).to_csv(run_jaccard_file, index = None, sep = '\t')
+(pd.DataFrame(run_avg_corr_list)).to_csv(run_avg_corr_file, index = None, sep = '\t')
 
 
 
