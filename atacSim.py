@@ -3,13 +3,13 @@ import numpy as np
 import pandas as pd
 import scipy
 import random
+from cassiopeia.mixins.errors import ecDNABirthDeathSimulatorError
 import cassiopeia as cas
 import os
 from itertools import combinations
 from collections import defaultdict
 import copy
 from typing import Literal
-from cas.mixins.errors import ecDNABirthDeathSimulatorError
 
 
 class atacDataSimulation():
