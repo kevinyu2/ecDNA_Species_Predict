@@ -14,7 +14,7 @@ import math
 
 # Number of attempts each
 num_attempts = 5
-out_dir_main = '../simulated_data/'
+out_dir_main = './final_simulated_data/'
 
 species_counts = [1,2,3,4,5]
 
@@ -26,7 +26,7 @@ gene_overlap_proportion = 0
 chance_to_change = 0.1
 
 # Average number of copies of ecDNA to start with
-copy_number_initial_mean = 4
+copy_number_initial_mean = 6
 
 # Read depth (expected number of times each gene is read by ATAC-seq). Greater makes the multinomial approximation more accurate
 depth_mean = 1
@@ -240,4 +240,4 @@ for species_count in species_counts :
                 failures += 1
                 continue
 
-        print(f"{num_attempts - failures} / {num_attempts} Succeeded")
+        print(f"Succeded with {failures} aborted simulations")

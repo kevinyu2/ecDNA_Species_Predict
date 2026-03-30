@@ -9,6 +9,7 @@ from itertools import combinations
 from collections import defaultdict
 import copy
 from typing import Literal
+from cas.mixins.errors import ecDNABirthDeathSimulatorError
 
 
 class atacDataSimulation():
@@ -185,6 +186,8 @@ class atacDataSimulation():
         species_percentages = {}
         for species in ecDNA_species :
             species_percentages[species] = counts[(counts[species] >= 1)].shape[0] / counts.shape[0] * 100
+            if species_percentages[species] == 0 :
+                raise ecDNABirthDeathSimulatorError("One or more ecDNA species went extinct")
 
         species_total_percentage = (counts[ecDNA_species] > 0).any(axis=1).mean() * 100
         print(f"ecDNA Names: {ecDNA_species}")
