@@ -29,7 +29,7 @@ chance_to_change = 0.1
 copy_number_initial_mean = 4
 
 # Read depth (expected number of times each gene is read by ATAC-seq). Greater makes the multinomial approximation more accurate
-depth_mean = 2
+depth_mean = 1
 depth_std = 0.4
 
 # Always max(fitness_max, 0.1 * # distinct species). Set to 0.1 for no co-selection, and 0.
@@ -192,7 +192,7 @@ for species_count in species_counts :
             gene_counts = init_array_random(species_count, gene_count_mean, gene_count_std, 5)
 
             gene_overlap = {}
-            if gene_overlap_proportion > 0 :
+            if gene_overlap_proportion > 0 and species_count > 1 :
                 gene_overlap = generate_gene_overlap(gene_counts, gene_overlap_proportion)
 
             # Vary number of cells (large scale)
