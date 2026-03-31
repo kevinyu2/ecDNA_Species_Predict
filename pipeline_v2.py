@@ -26,7 +26,7 @@ gene_overlap_proportion = 0
 chance_to_change = 0.1
 
 # Average number of copies of ecDNA to start with
-copy_number_initial_mean = 6
+copy_number_initial_mean = 4
 
 # Read depth (expected number of times each gene is read by ATAC-seq). Greater makes the multinomial approximation more accurate
 depth_mean = 1
