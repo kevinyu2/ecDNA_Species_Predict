@@ -25,49 +25,49 @@ parser.add_argument(
 )
 
 parser.add_argument(
-    "runs",
+    "--runs",
     type=int,
     default = 5,
     help="Number of runs for each setting"
 )
 
 parser.add_argument(
-    "species_max",
+    "--species-max",
     type=int,
     default = 5,
     help="Tries all species counts up to this number"
 )
 
 parser.add_argument(
-    "overlap_prop",
+    "--overlap-prop",
     type=float,
     default = 0,
     help="Proportion of genes that will overlap"
 )
 
 parser.add_argument(
-    "change_chance",
+    "--change-chance",
     type=float,
     default = 0.1,
     help="Proportion of genes with extra counts"
 )
 
 parser.add_argument(
-    "init_cn",
+    "--init-cn",
     type=int,
     default = 4,
     help="Initial copy numbers"
 )
 
 parser.add_argument(
-    "depth",
+    "--depth",
     type=float,
     default = 1,
     help="Number of samples per actual counts"
 )
 
 parser.add_argument(
-    "depth_std",
+    "--depth-std",
     type=float,
     default = 0,
     help="std of depth parameter per cell"
