@@ -7,33 +7,106 @@ import random
 from cassiopeia.mixins.errors import ecDNABirthDeathSimulatorError
 import os
 import math
+import argparse
 
 ##################################################################
 # Master controls
 ##################################################################
 
-# Number of attempts each
-num_attempts = 5
-out_dir_main = './final_simulated_data/'
+parser = argparse.ArgumentParser(
+    description="Pipeline for creating many simulations on cass",
+    formatter_class=argparse.ArgumentDefaultsHelpFormatter
+)
 
-species_counts = [1,2,3,4,5]
+parser.add_argument(
+    "out_dir",
+    type=str,
+    help="Main output dir"
+)
+
+parser.add_argument(
+    "runs",
+    type=int,
+    default = 5,
+    help="Number of runs for each setting"
+)
+
+parser.add_argument(
+    "species_max",
+    type=int,
+    default = 5,
+    help="Tries all species counts up to this number"
+)
+
+parser.add_argument(
+    "overlap_prop",
+    type=float,
+    default = 0,
+    help="Proportion of genes that will overlap"
+)
+
+parser.add_argument(
+    "change_chance",
+    type=float,
+    default = 0.1,
+    help="Proportion of genes with extra counts"
+)
+
+parser.add_argument(
+    "init_cn",
+    type=int,
+    default = 4,
+    help="Initial copy numbers"
+)
+
+parser.add_argument(
+    "depth",
+    type=float,
+    default = 1,
+    help="Number of samples per actual counts"
+)
+
+parser.add_argument(
+    "depth_std",
+    type=float,
+    default = 0,
+    help="std of depth parameter per cell"
+)
+
+
+parser.add_argument(
+    "fmax",
+    type=float,
+    default = 0.1,
+    help="fitness is max(fmax, 0.1 * # distinct species)"
+)
+
+args = parser.parse_args()
+##################################################################
+
+
+# Number of attempts each
+num_attempts = args.runs
+out_dir_main = args.out_dir
+
+species_counts = np.arange(1, args.species_max)
 
 # Proportion of each species' genes that goes into other species
 # Set to 0 to prevent overlaps
-gene_overlap_proportion = 0
+gene_overlap_proportion = args.overlap_prop
 
 # Chance to add extra counts of a gene in an ecDNA species
-chance_to_change = 0.1
+chance_to_change = args.change_chance
 
 # Average number of copies of ecDNA to start with
-copy_number_initial_mean = 4
+copy_number_initial_mean = args.init_cn
 
 # Read depth (expected number of times each gene is read by ATAC-seq). Greater makes the multinomial approximation more accurate
-depth_mean = 1
-depth_std = 0.4
+depth_mean = args.depth
+depth_std = args.depth_std
 
 # Always max(fitness_max, 0.1 * # distinct species). Set to 0.1 for no co-selection, and 0.
-fitness_max = 0.1
+fitness_max = args.fmax
 
 ##################################################################
 # Don't Need to Change
@@ -56,7 +129,7 @@ gene_count_std = 0
 change_distribution_param = 0.8
 initial_birth_scale = 0.5
 death_waiting_distribution_param = 8
-num_extant = 20000
+num_extant = 1000000
 num_cells_mean = 2000
 capacities = 3
 sim_mult = 1.5

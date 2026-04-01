@@ -23,12 +23,12 @@ import shutil
 # Z score cutoff for inclusion of a gene in an ecDNA
 score_cutoff = 0
 # Number of NMFs to run
-n_iter = 50
+n_iter = 20
 
 # True means we provide to the program the exact number of ecDNA
 know_ecDNA = False
 # Numbers to check (if num_ecDNA is none)
-counts_to_check = np.arange(1,7)
+counts_to_check = np.arange(1,4)
 # parameter determining importance of error in choosing the best number of ecDNA
 # stability - error_w * normalzied_error
 error_w = 0.1
@@ -36,10 +36,10 @@ error_w = 0.1
 density_threshold = 0.1
 
 # directory with the data of the run
-run_dir = sys.argv[1]
+run_dir = Path(sys.argv[1])
 # Full location of where we print things
-out_dir = sys.argv[2
-                   ]
+out_dir = sys.argv[2]
+
 full_out_dir = f'{out_dir}/cNMF_countprov_{int(know_ecDNA)}_errorw_{error_w}'
 full_result_dir = f'{out_dir}/cNMF_results_countprov_{int(know_ecDNA)}_errorw_{error_w}'
 
@@ -149,6 +149,8 @@ def cNMF_run(out_dir, out_name, cellbygene, cellbyspecies, metadata_file, score_
 
     # Parse cNMF spectra scores
     spectra_scores.columns = [f"pred_ecDNA_{col}" for col in spectra_scores.columns]
+    spectra_tpm.columns = [f"pred_ecDNA_{col}" for col in spectra_tpm.columns]
+
     ecDNA_species = spectra_scores.columns
     observed = {}
     for species in ecDNA_species :
@@ -157,6 +159,21 @@ def cNMF_run(out_dir, out_name, cellbygene, cellbyspecies, metadata_file, score_
         for species in ecDNA_species :
             if row[species] > score_cutoff :
                 observed[species].append(i)
+
+    # Find how to rescale usage in terms of tpm
+    # Assumes the lowest of the used genes is 1, and takes the average of the lowest and those 1.2 times away (incase there are slight deviations)
+    usage_scale = {}
+    for species in ecDNA_species :
+        usage_scale[species] = 1
+        obs_genes = observed[species]
+        if len(obs_genes) == 0:
+            continue
+
+        tpm_values = spectra_tpm.loc[obs_genes, species].values
+        min_tpm = np.min(tpm_values)
+        near_min = tpm_values[tpm_values <= min_tpm * 1.2]
+        usage_scale[species] = np.mean(near_min)
+
 
     # Find out which predicted ecDNA matches to which gt ecDNA
     # Uses hungarian algorithm, with distances defined by jaccard index between gene sets
@@ -238,19 +255,25 @@ def cNMF_run(out_dir, out_name, cellbygene, cellbyspecies, metadata_file, score_
 
     # Get usage correlations
     usage_df.columns = [f'pred_ecDNA_{i + 1}' for i in range(len(usage_df.columns))]
+    for species in ecDNA_species :
+        usage_df[species] *= usage_scale[species]
+
     cellxspecies_df = pd.read_csv(cellbyspecies, sep = '\t', index_col = 0)
     usage_df.rename(columns=mapping, inplace=True)
-    total_corr = 0
+    total_error = 0
+    total_count = 0
+
     plt.figure()
     for species in list(cellxspecies_df.columns) :
         if species in list(usage_df.columns) :
-            total_corr += pearsonr(usage_df[species], cellxspecies_df[species])[0]
+            total_error += ((usage_df[species] - cellxspecies_df[species])**2).sum()
+            total_count += len(usage_df[species])
             plt.scatter(usage_df[species], cellxspecies_df[species], s = 1, alpha = 0.3, label = species)
     plt.xlabel(f"Usage")
     plt.ylabel(f"Count")
     plt.legend()
     plt.savefig(f"{out_dir}/{out_name}/{out_name}.usage_map.png")
-    avg_corr = total_corr / len(list(cellxspecies_df.columns))
+    avg_count_error = total_error / total_count
 
     # Make a predictions file
     with open(f"{out_dir}/{out_name}/{out_name}.predictions.txt", 'w') as f:
@@ -278,7 +301,7 @@ def cNMF_run(out_dir, out_name, cellbygene, cellbyspecies, metadata_file, score_
 
     shutil.rmtree(f"{out_dir}/{out_name}/cnmf_tmp")
 
-    return len(usage_df.columns), best_jaccard, avg_corr
+    return len(usage_df.columns), best_jaccard, avg_count_error
 
 
 run_results_dir = f"{full_result_dir}/{run_dir.name}/"
@@ -287,11 +310,11 @@ os.makedirs(run_results_dir, exist_ok=True)
 # save results in pandas tsv
 run_predicted_species_counts_file = f"{run_results_dir}/species_counts.tsv"
 run_jaccard_file = f"{run_results_dir}/jaccard.tsv"
-run_avg_corr_file = f"{run_results_dir}/corr.tsv"
+run_count_err_file = f"{run_results_dir}/count_err.tsv"
 
 run_predicted_species_counts_list = []
 run_jaccard_list = []
-run_avg_corr_list = []
+run_count_err_list = []
 
 for spec_dir in Path(run_dir).glob("*"):
     # Should be in the file names
@@ -311,7 +334,7 @@ for spec_dir in Path(run_dir).glob("*"):
     # Temporary dicts to turn into dataframe
     run_predicted_species_counts = {"num_ecDNA_true" : num_ecDNA_true, "comb_chance" : comb_chance}
     run_jaccard = {"num_ecDNA_true" : num_ecDNA_true, "comb_chance" : comb_chance}
-    run_avg_corr = {"num_ecDNA_true" : num_ecDNA_true, "comb_chance" : comb_chance}
+    run_count_err = {"num_ecDNA_true" : num_ecDNA_true, "comb_chance" : comb_chance}
 
 
     for cellbygene_path in Path(spec_dir).glob("*_cellxgene.tsv") :
@@ -330,26 +353,26 @@ for spec_dir in Path(run_dir).glob("*"):
         cellbygene_temp.to_csv(cellbygene_temp_path, sep = '\t')
 
         try :
-            predicted_species_count, jaccard, avg_corr = cNMF_run(run_out_dir, out_name, cellbygene_temp_path, cellbyspecies, metadata_file, score_cutoff, n_iter, num_ecDNA, counts_to_check, error_w, density_threshold)
+            predicted_species_count, jaccard, avg_count_error = cNMF_run(run_out_dir, out_name, cellbygene_temp_path, cellbyspecies, metadata_file, score_cutoff, n_iter, num_ecDNA, counts_to_check, error_w, density_threshold)
         except Exception as e :
             print(f"Error: {e}")
-            predicted_species_count, jaccard, avg_corr = 0,0,0
+            predicted_species_count, jaccard, avg_count_error = 0,0,0
         run_predicted_species_counts[out_name] = predicted_species_count
         run_jaccard[out_name] = jaccard
-        run_avg_corr[out_name] = avg_corr
+        run_count_err[out_name] = avg_count_error
 
         print("UPDATES")
         print(run_jaccard)
         print(run_predicted_species_counts)
-        print(run_avg_corr)
+        print(run_count_err)
 
     run_predicted_species_counts_list.append(run_predicted_species_counts)
     run_jaccard_list.append(run_jaccard)
-    run_avg_corr_list.append(run_avg_corr)
+    run_count_err_list.append(run_count_err)
 
 (pd.DataFrame(run_predicted_species_counts_list)).to_csv(run_predicted_species_counts_file, index = None, sep = '\t')
 (pd.DataFrame(run_jaccard_list)).to_csv(run_jaccard_file, index = None, sep = '\t')
-(pd.DataFrame(run_avg_corr_list)).to_csv(run_avg_corr_file, index = None, sep = '\t')
+(pd.DataFrame(run_count_err_list)).to_csv(run_count_err_file, index = None, sep = '\t')
 
 
 
