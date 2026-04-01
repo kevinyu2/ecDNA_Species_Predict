@@ -308,6 +308,11 @@ for species_count in species_counts :
                 sim.run_sim() 
                 i += 1   
 
+                # Free memory
+                del sim
+                import gc
+                gc.collect()
+
             except ecDNABirthDeathSimulatorError as e:
                 print(f"Iteration {i}: {e}")
                 failures += 1
