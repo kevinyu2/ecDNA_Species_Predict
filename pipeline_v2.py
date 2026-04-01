@@ -75,7 +75,7 @@ parser.add_argument(
 
 
 parser.add_argument(
-    "fmax",
+    "--fmax",
     type=float,
     default = 0.1,
     help="fitness is max(fmax, 0.1 * # distinct species)"
