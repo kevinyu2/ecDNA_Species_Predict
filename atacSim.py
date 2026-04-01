@@ -245,35 +245,42 @@ class atacDataSimulation():
 
         print("Adding noise")
 
-        cbg_true_matrix = np.column_stack([gene_cell_true_cn_dict[g] for g in gene_cell_true_cn_dict.keys()])
-        cbg_noisy_matrix = np.zeros_like(cbg_true_matrix, dtype=int)
+        genes = list(gene_to_species_mult.keys())
 
-        # Pick out of multinomial dist
-        depth_tracker = []
-        for cell in range(self.num_cells):
-            row_sum = cbg_true_matrix[cell].sum()
-            if row_sum != 0 :
-                p = cbg_true_matrix[cell] / row_sum
+        # One line at a time to save memory
+        with open(cellxgene_out, "w") as f_noisy, open(cellxgene_noiseless_out, "w") as f_true:
+            # header
+            f_noisy.write("\t".join(["cell"] + genes) + "\n")
+            f_true.write("\t".join(["cell"] + genes) + "\n")
 
-                depth = np.random.normal(self.depth_mean, self.depth_std)
-                depth = max(depth, 0.1)
-                depth_tracker.append(depth)
+            for cell in range(self.num_cells):
+                # True row
+                true_row = []
+                for gene in genes:
+                    val = 2
+                    for species in gene_to_species_mult[gene]:
+                        val += counts[species].values[cell]
+                    true_row.append(val)
 
-                # depth defines sparsity/coverage, but it still gets normalized
-                cbg_noisy_matrix[cell] = np.random.multinomial(row_sum * depth, p) * (1 / depth)
+                true_row = np.array(true_row)
 
-        # add gaussian noise
-        noise = np.random.normal(loc=0, scale=self.noise_scale, size=cbg_noisy_matrix.shape)
-        cbg_noisy_matrix = cbg_noisy_matrix + noise
-        cbg_noisy_matrix = np.maximum(cbg_noisy_matrix, 0)
+                # sample multinomial and add random noise
+                row_sum = true_row.sum()
+                if row_sum != 0:
+                    p = true_row / row_sum
 
+                    depth = max(np.random.normal(self.depth_mean, self.depth_std), 0.1)
 
-        # Export matrix
-        row_names = [f"cell_{i}" for i in range(cbg_noisy_matrix.shape[0])]
-        df = pd.DataFrame(cbg_noisy_matrix, columns=gene_to_species_mult.keys(), index=row_names)
-        df.to_csv(cellxgene_out, sep = '\t')
-        df = pd.DataFrame(cbg_true_matrix, columns=gene_to_species_mult.keys(), index=row_names)
-        df.to_csv(cellxgene_noiseless_out, sep = '\t')
+                    noisy_row = np.random.multinomial(int(row_sum * depth), p) * (1 / depth)
+                else:
+                    noisy_row = true_row.copy()
+
+                noise = np.random.normal(loc=0, scale=self.noise_scale, size=len(true_row))
+                noisy_row = np.maximum(noisy_row + noise, 0)
+
+                f_true.write(f"cell_{cell}\t" + "\t".join(map(str, true_row)) + "\n")
+                f_noisy.write(f"cell_{cell}\t" + "\t".join(map(str, noisy_row)) + "\n")
+
 
         # Get metadata and summary statistics
         with open(metadata_out, 'w') as f :
@@ -338,12 +345,6 @@ class atacDataSimulation():
                 f.write(f'Percent of cells with {species}:\t{percent}\n')
             f.write(f"Total percentage of cells with ecDNA:\t{species_total_percentage}\n")
 
-            f.write('\nDepths:\n')
-            for i, depth in enumerate(depth_tracker) :
-                f.write(f"cell_{i}\t{depth}\n")
-
-        self.cbg_noisy_matrix = cbg_noisy_matrix
-        self.cbg_true_matrix = cbg_true_matrix
         self.gene_counts = gene_counts_save
         self.gene_overlap = gene_overlap_save
         self.additional_counts_all = additional_counts_all
