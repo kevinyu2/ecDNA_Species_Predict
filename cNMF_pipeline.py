@@ -96,7 +96,7 @@ error_w = args.errorw
 density_threshold = args.density_threshold
 
 # directory with the data of the run
-run_dir = args.run_dir
+run_dir = Path(args.run_dir)
 # Full location of where we print things
 out_dir = args.out_dir
 
