@@ -131,7 +131,8 @@ def cNMF_run(out_dir, out_name, cellbygene, cellbyspecies, metadata_file, score_
     cnmf_obj.save_norm_counts(adata)
     cnmf_obj.factorize(worker_i=0, total_workers=1)
     cnmf_obj.combine()
-    cnmf_obj.k_selection_plot()
+    if num_ecDNA is None :
+        cnmf_obj.k_selection_plot()
 
     # Find best number of ecDNA using stability and error
     if num_ecDNA is None :
@@ -183,6 +184,8 @@ def cNMF_run(out_dir, out_name, cellbygene, cellbyspecies, metadata_file, score_
         print(f"Number of ecDNA chosen: {num_ecDNA}")
     else :
         num_ecDNA = num_ecDNA[0]
+        if num_ecDNA == 1 :
+            cnmf_obj_1 = cnmf_obj
 
 
     if num_ecDNA != 1 :
