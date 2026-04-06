@@ -89,7 +89,7 @@ args = parser.parse_args()
 num_attempts = args.runs
 out_dir_main = args.out_dir
 
-species_counts = np.arange(1, args.species_max)
+species_counts = np.arange(1, args.species_max + 1)
 
 # Proportion of each species' genes that goes into other species
 # Set to 0 to prevent overlaps
@@ -232,7 +232,8 @@ def generate_gene_overlap(counts, overlap_prop):
         all_intersections.extend(itertools.combinations(range(n), r))
     
     for i, count in enumerate(counts):
-        num_overlap = int(math.ceil(count * overlap_prop))
+        # Take min because we don't want to use all of them, otherwise it's just one ecDNA really
+        num_overlap = min(count - 1, int(math.ceil(count * overlap_prop)))
         
         # Only look at intersections from that set
         valid_intersections = [comb for comb in all_intersections if i in comb]

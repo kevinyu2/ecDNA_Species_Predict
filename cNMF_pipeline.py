@@ -18,27 +18,87 @@ import matplotlib.pyplot as plt
 import os
 from pathlib import Path
 import shutil
+import argparse
 
+###############################################################
+
+parser = argparse.ArgumentParser(
+    description="Pipeline for testing many cNMF runs",
+    formatter_class=argparse.ArgumentDefaultsHelpFormatter
+)
+
+parser.add_argument(
+    "run_dir",
+    type=str,
+    help="Main input dir"
+)
+
+parser.add_argument(
+    "out_dir",
+    type=str,
+    help="Main output dir"
+)
+
+parser.add_argument(
+    "--iter",
+    type=int,
+    default = 50,
+    help="Number of iterations to run cNMF"
+)
+
+parser.add_argument(
+    "--know-ecDNA",
+    action="store_true",
+    help="Know number of species (doesn't calculate)"
+)
+
+
+
+parser.add_argument(
+    "--max-species",
+    type = int,
+    default = 6,
+    help="Max number of species to check"
+)
+
+
+parser.add_argument(
+    "--errorw",
+    type = float,
+    default = 0.1,
+    help="Weight of error against stability"
+)
+
+parser.add_argument(
+    "--density-threshold",
+    type = float,
+    default = 0.1
+)
+
+
+args = parser.parse_args()
+
+###############################################################
 
 # Z score cutoff for inclusion of a gene in an ecDNA
 score_cutoff = 0
 # Number of NMFs to run
-n_iter = 20
+n_iter = args.iter
 
 # True means we provide to the program the exact number of ecDNA
-know_ecDNA = False
+know_ecDNA = args.know_ecDNA
 # Numbers to check (if num_ecDNA is none)
-counts_to_check = np.arange(1,4)
+counts_to_check = np.arange(1,1+args.max_species)
 # parameter determining importance of error in choosing the best number of ecDNA
 # stability - error_w * normalzied_error
-error_w = 0.1
+error_w = args.errorw
 
-density_threshold = 0.1
+density_threshold = args.density_threshold
 
 # directory with the data of the run
-run_dir = Path(sys.argv[1])
+run_dir = args.run_dir
 # Full location of where we print things
-out_dir = sys.argv[2]
+out_dir = args.out_dir
 
 full_out_dir = f'{out_dir}/cNMF_countprov_{int(know_ecDNA)}_errorw_{error_w}'
 full_result_dir = f'{out_dir}/cNMF_results_countprov_{int(know_ecDNA)}_errorw_{error_w}'
