@@ -181,6 +181,8 @@ def cNMF_run(out_dir, out_name, cellbygene, cellbyspecies, metadata_file, score_
         print(k_df)
         num_ecDNA = int(k_df.loc[k_df['score'].idxmax()]['k'])
         print(f"Number of ecDNA chosen: {num_ecDNA}")
+    else :
+        num_ecDNA = num_ecDNA[0]
 
 
     if num_ecDNA != 1 :
