@@ -81,6 +81,13 @@ parser.add_argument(
     help="fitness is max(fmax, 0.1 * # distinct species)"
 )
 
+parser.add_argument(
+    "--num-extant",
+    type=int,
+    default = 200000,
+    help="Number of final cells in the simulation"
+)
+
 args = parser.parse_args()
 ##################################################################
 
@@ -108,6 +115,8 @@ depth_std = args.depth_std
 # Always max(fitness_max, 0.1 * # distinct species). Set to 0.1 for no co-selection, and 0.
 fitness_max = args.fmax
 
+num_extant = args.num_extant
+
 ##################################################################
 # Don't Need to Change
 ##################################################################
@@ -129,7 +138,6 @@ gene_count_std = 0
 change_distribution_param = 0.8
 initial_birth_scale = 0.5
 death_waiting_distribution_param = 8
-num_extant = 1000000
 num_cells_mean = 2000
 capacities = 3
 sim_mult = 1.5
@@ -231,25 +239,51 @@ def generate_gene_overlap(counts, overlap_prop):
     for r in range(2, n + 1):
         all_intersections.extend(itertools.combinations(range(n), r))
     
+    num_overlap_dict = {}
     for i, count in enumerate(counts):
         # Take min because we don't want to use all of them, otherwise it's just one ecDNA really
-        num_overlap = min(count - 1, int(math.ceil(count * overlap_prop)))
-        
+        num_overlap_dict[i] = min(count - 1, int(math.ceil(count * overlap_prop)))
+    
+    done = set()
+
+    for i, count in enumerate(counts):
+
+        num_overlap = num_overlap_dict[i]
         # Only look at intersections from that set
         valid_intersections = [comb for comb in all_intersections if i in comb]
         
         # Assign each overlapping gene randomly
         for _ in range(num_overlap):
-            chosen = random.choice(valid_intersections)
-            overlap_dict[chosen] += 1
+            # Cleanse valid intersections
+            to_remove = []
+            for intersect_idx, intersect in enumerate(valid_intersections) :
+                for species_no in done :
+                    if species_no in intersect :
+                        to_remove.append(intersect_idx)
+                        break 
+
+            # remove duplicates and delete safely (reverse order)
+            for idx in sorted(set(to_remove), reverse=True):
+                del valid_intersections[idx]
+                
+            if len(valid_intersections) > 0 :
+
+                chosen = random.choice(valid_intersections)
+                overlap_dict[chosen] += 1
+                for species_no in chosen :
+                    num_overlap_dict[species_no] = num_overlap_dict[species_no] - 1
+                    if num_overlap_dict[species_no] == 0 :
+                        done.add(species_no)
     
     return dict(overlap_dict)
 ##############################################################
 
 for species_count in species_counts :
     for average_combination_chance in average_combination_chances :
-        if average_combination_chance == 0 :
+        if average_combination_chance <= 0 :
             allow_cosegregation = False
+        else :
+            allow_cosegregation = True
         gene_count_mean = gene_count_total / species_count
         fitness_array = build_fitness(species_count, fitness_max)
         print(f"fitness array: {fitness_array}")
@@ -262,7 +296,7 @@ for species_count in species_counts :
         failures = 0
         i = 0
         while i < num_attempts :
-            initial_copy_number_array = init_array_random(species_count, copy_number_initial_mean, 2, 1)
+            initial_copy_number_array = init_array_random(species_count, copy_number_initial_mean, 2, 4)
             gene_counts = init_array_random(species_count, gene_count_mean, gene_count_std, 5)
 
             gene_overlap = {}
