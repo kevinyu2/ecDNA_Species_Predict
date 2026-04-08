@@ -4,7 +4,6 @@
 ########################################################################
 
 import sys
-from cnmf import cNMF
 import numpy as np
 import random
 from collections import defaultdict
@@ -19,21 +18,61 @@ import os
 from pathlib import Path
 import shutil
 from scipy.cluster.hierarchy import linkage, fcluster
+import argparse
 
+##################################################################
+# Master controls
+##################################################################
+
+parser = argparse.ArgumentParser(
+    description="Pipeline for creating many simulations on cass",
+    formatter_class=argparse.ArgumentDefaultsHelpFormatter
+)
+
+
+parser.add_argument(
+    "run_dir",
+    type=str,
+    help="Main input dir"
+)
+
+parser.add_argument(
+    "out_dir",
+    type=str,
+    help="Main output dir"
+)
+
+parser.add_argument(
+    "--know-ecDNA",
+    action="store_true",
+    help="Know number of species (doesn't calculate)"
+)
+
+parser.add_argument(
+    "--threshold",
+    type = float,
+    default = 0.4
+)
+
+
+
+args = parser.parse_args()
+
+#################################################################
 
 # If known, will do clusteirng with this
-know_ecDNA = False
+know_ecDNA = args.know_ecDNA
 # If not known, will do clustering based off a distance threshold cutoff
-threshold = 0.4
+threshold = args.threshold
 
 # directory with the data of the run
-run_dir = Path(sys.argv[1])
+run_dir = Path(args.run_dir)
 # Full location of where we print things
-out_dir = sys.argv[2]
+out_dir = args.out_dir
 
 if know_ecDNA :
-    full_out_dir = f'{out_dir}/hier_countprov_1'
-    full_result_dir = f'{out_dir}/hier_results_countprov_1'
+    full_out_dir = f'{out_dir}/hier_countprov_1_thresh_0'
+    full_result_dir = f'{out_dir}/hier_results_countprov_1_thresh_0-'
 else :
     full_out_dir = f'{out_dir}/hier_countprov_0_thresh_{threshold}'
     full_result_dir = f'{out_dir}/hier_results_countprov_0_thresh_{threshold}'

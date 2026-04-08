@@ -52,15 +52,12 @@ parser.add_argument(
     help="Know number of species (doesn't calculate)"
 )
 
-
-
 parser.add_argument(
     "--max-species",
     type = int,
     default = 6,
     help="Max number of species to check"
 )
-
 
 parser.add_argument(
     "--errorw",
@@ -123,7 +120,7 @@ def cNMF_run(out_dir, out_name, cellbygene, cellbyspecies, metadata_file, score_
             cnmf_obj.prepare(counts_fn=cellbygene, tpm_fn = cellbygene, components=counts_to_check, n_iter=n_iter, seed=random.randint(1,1000))
 
     else :
-        cnmf_obj.prepare(counts_fn=cellbygene, components=num_ecDNA, n_iter=n_iter, seed=random.randint(1,1000))
+        cnmf_obj.prepare(counts_fn=cellbygene, tpm_fn = cellbygene, components=num_ecDNA, n_iter=n_iter, seed=random.randint(1,1000))
 
 
     input_counts = pd.read_csv(cellbygene, sep = '\t', index_col = 0)
