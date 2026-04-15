@@ -88,6 +88,13 @@ parser.add_argument(
     help="Number of final cells in the simulation"
 )
 
+parser.add_argument(
+    "--min-prop",
+    type=float,
+    default = 0.0,
+    help="Reject all simulations where some ecDNA has less than this proportion"
+)
+
 args = parser.parse_args()
 ##################################################################
 
@@ -116,6 +123,9 @@ depth_std = args.depth_std
 fitness_max = args.fmax
 
 num_extant = args.num_extant
+
+# Remove any simulations where an ecDNA is in less than this proportion of sampled cells
+min_ecDNA_prop = args.min_prop
 
 ##################################################################
 # Don't Need to Change
@@ -213,7 +223,7 @@ def generate_venn(n, cosegregation_strength):
     return regions
 
 # Beta dist with mean m
-def rand_with_mean(m, strength=5):
+def rand_with_mean(m, strength=15):
     alpha = m * strength
     beta = (1 - m) * strength
     return random.betavariate(alpha, beta)
@@ -338,7 +348,8 @@ for species_count in species_counts :
                     mat = mat,
                     capacity = capacity,
                     sim_mult = sim_mult,
-                    random_seed = np.random.randint(1, 1001)
+                    random_seed = np.random.randint(1, 1001),
+                    min_ecDNA_prop = min_ecDNA_prop
                     )
                 sim.run_sim() 
                 i += 1   

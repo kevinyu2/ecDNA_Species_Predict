@@ -52,7 +52,8 @@ parser.add_argument(
     "--threshold",
     type = float,
     default = 0.4
-)
+) # TODO: if threshold is not the way to go, also change graphing software to not include this?
+# Might have a score still that punishes having too many clusters, not sure
 
 
 
@@ -72,7 +73,7 @@ out_dir = args.out_dir
 
 if know_ecDNA :
     full_out_dir = f'{out_dir}/hier_countprov_1_thresh_0'
-    full_result_dir = f'{out_dir}/hier_results_countprov_1_thresh_0-'
+    full_result_dir = f'{out_dir}/hier_results_countprov_1_thresh_0'
 else :
     full_out_dir = f'{out_dir}/hier_countprov_0_thresh_{threshold}'
     full_result_dir = f'{out_dir}/hier_results_countprov_0_thresh_{threshold}'
@@ -201,6 +202,7 @@ def hier_run(out_dir, out_name, cellbygene, cellbyspecies, metadata_file, thresh
             subset = cellbygene_temp[genes_within_range]
             avg_list = subset.mean(axis=1).tolist()
 
+            # Count the total error
             total_error += ((avg_list - cellxspecies_df[species])**2).sum()
             total_count += len(avg_list)
             plt.scatter(avg_list, cellxspecies_df[species], s = 1, alpha = 0.3, label = species)

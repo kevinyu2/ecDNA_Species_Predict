@@ -19,6 +19,8 @@ import os
 from pathlib import Path
 import shutil
 import argparse
+from scipy.optimize import nnls
+
 
 ###############################################################
 
@@ -106,8 +108,8 @@ pd.set_option('display.max_rows', None)
 pd.set_option('display.max_columns', None)
 
 # Run cNMF
-# returns: (predicted species count, jaccard, average correlation)
-def cNMF_run(out_dir, out_name, cellbygene, cellbyspecies, metadata_file, score_cutoff, n_iter, num_ecDNA, counts_to_check, error_w, density_threshold) :
+# returns: (predicted species count, jaccard, average count error)
+def cNMF_run(cellbygene_df, out_dir, out_name, cellbygene, cellbyspecies, metadata_file, score_cutoff, n_iter, num_ecDNA, counts_to_check, error_w, density_threshold) :
     os.makedirs(out_dir, exist_ok=True)
     cnmf_obj = cNMF(output_dir=out_dir, name=out_name)
     check_one = False
@@ -187,7 +189,7 @@ def cNMF_run(out_dir, out_name, cellbygene, cellbyspecies, metadata_file, score_
 
     if num_ecDNA != 1 :
         cnmf_obj.consensus(k=num_ecDNA, density_threshold=density_threshold)
-        usage_df, spectra_scores, spectra_tpm, top_genes = cnmf_obj.load_results(K=num_ecDNA, density_threshold=density_threshold,  norm_usage = False)
+        usage_df, spectra_scores, spectra_tpm, top_genes = cnmf_obj.load_results(K=num_ecDNA, density_threshold=density_threshold, norm_usage = False)
     else :
         cnmf_obj_1.consensus(k=num_ecDNA, density_threshold=density_threshold)
         usage_df, spectra_scores, spectra_tpm, top_genes = cnmf_obj_1.load_results(K=1, density_threshold=density_threshold, norm_usage = False)
@@ -235,6 +237,34 @@ def cNMF_run(out_dir, out_name, cellbygene, cellbyspecies, metadata_file, score_
         min_tpm = np.min(tpm_values)
         near_min = tpm_values[tpm_values <= min_tpm * 1.2]
         usage_scale[species] = np.mean(near_min)
+
+    # Now recreate a better spectra_tpm
+    for species in ecDNA_species:
+        scale = usage_scale[species]
+
+        if scale == 0:
+            continue
+
+        # divide by the found scale
+        spectra_tpm[species] /= scale
+
+        # zero out genes not in the ecDNA species
+        mask = ~spectra_tpm.index.isin(observed[species])
+        spectra_tpm.loc[mask, species] = 0
+
+    # Run NNLS optimization to find better usage matrix
+    def NNLS(cellbygene_df, spectra_tpm) :
+        X = cellbygene_df.values 
+        H = spectra_tpm.values.T
+
+        W = np.zeros((X.shape[0], H.shape[0]))
+
+        for i in range(X.shape[0]):
+            W[i], _ = nnls(H.T, X[i])
+        return W
+    usage_df_new_vals = NNLS(cellbygene_df, spectra_tpm)
+    usage_df.loc[:, :] = usage_df_new_vals
+    usage_df.columns = [f'pred_ecDNA_{i + 1}' for i in range(len(usage_df.columns))]
 
 
     # Find out which predicted ecDNA matches to which gt ecDNA
@@ -315,15 +345,12 @@ def cNMF_run(out_dir, out_name, cellbygene, cellbyspecies, metadata_file, score_
         for gene in gene_list :
             gene_counts.loc[species, gene] = np.round(spectra_consensus.loc[species, gene]/min_val)
 
-    # Get usage correlations
-    usage_df.columns = [f'pred_ecDNA_{i + 1}' for i in range(len(usage_df.columns))]
-    for species in ecDNA_species :
-        usage_df[species] *= usage_scale[species]
 
     cellxspecies_df = pd.read_csv(cellbyspecies, sep = '\t', index_col = 0)
     usage_df.rename(columns=mapping, inplace=True)
     total_error = 0
     total_count = 0
+
 
     plt.figure()
     for species in list(cellxspecies_df.columns) :
@@ -331,11 +358,13 @@ def cNMF_run(out_dir, out_name, cellbygene, cellbyspecies, metadata_file, score_
             total_error += ((usage_df[species] - cellxspecies_df[species])**2).sum()
             total_count += len(usage_df[species])
             plt.scatter(usage_df[species], cellxspecies_df[species], s = 1, alpha = 0.3, label = species)
+
     plt.xlabel(f"Usage")
     plt.ylabel(f"Count")
     plt.legend()
     plt.savefig(f"{out_dir}/{out_name}/{out_name}.usage_map.png")
     avg_count_error = total_error / total_count
+
 
     # Make a predictions file
     with open(f"{out_dir}/{out_name}/{out_name}.predictions.txt", 'w') as f:
@@ -415,18 +444,13 @@ for spec_dir in Path(run_dir).glob("*"):
         cellbygene_temp.to_csv(cellbygene_temp_path, sep = '\t')
 
         try :
-            predicted_species_count, jaccard, avg_count_error = cNMF_run(run_out_dir, out_name, cellbygene_temp_path, cellbyspecies, metadata_file, score_cutoff, n_iter, num_ecDNA, counts_to_check, error_w, density_threshold)
+            predicted_species_count, jaccard, avg_count_error = cNMF_run(cellbygene_temp, run_out_dir, out_name, cellbygene_temp_path, cellbyspecies, metadata_file, score_cutoff, n_iter, num_ecDNA, counts_to_check, error_w, density_threshold)
         except Exception as e :
             print(f"Error: {e}")
             predicted_species_count, jaccard, avg_count_error = 0,0,0
         run_predicted_species_counts[out_name] = predicted_species_count
         run_jaccard[out_name] = jaccard
         run_count_err[out_name] = avg_count_error
-
-        print("UPDATES")
-        print(run_jaccard)
-        print(run_predicted_species_counts)
-        print(run_count_err)
 
     run_predicted_species_counts_list.append(run_predicted_species_counts)
     run_jaccard_list.append(run_jaccard)

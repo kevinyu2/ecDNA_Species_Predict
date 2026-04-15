@@ -92,6 +92,8 @@ class atacDataSimulation():
         # Int list denoting the maximum number of attachments each species can have
         capacity = None,
 
+        # Throw error if does not hit a minimum ecDNA proportion
+        min_ecDNA_prop = 0
     ):
 
     #############################################################
@@ -126,6 +128,7 @@ class atacDataSimulation():
         self.capacity = capacity
         self.death_waiting_distribution_param = death_waiting_distribution_param
         self.death_waiting_distribution = np.random.exponential(death_waiting_distribution_param)
+        self.min_ecDNA_prop = min_ecDNA_prop
 
     # Parameter to add different counts for each gene on each ecDNA (extra counts, so default is 0)
     def additional_count_func(self, length) :
@@ -188,6 +191,9 @@ class atacDataSimulation():
             species_percentages[species] = counts[(counts[species] >= 1)].shape[0] / counts.shape[0] * 100
             if species_percentages[species] == 0 :
                 raise ecDNABirthDeathSimulatorError("One or more ecDNA species went extinct")
+            if species_list[species] < self.min_ecDNA_prop * 100 :
+                raise ecDNABirthDeathSimulatorError(f"One or more ecDNA species underneath provided percentage cutoff {self.min_ecDNA_prop }")
+
 
         species_total_percentage = (counts[ecDNA_species] > 0).any(axis=1).mean() * 100
         print(f"ecDNA Names: {ecDNA_species}")
