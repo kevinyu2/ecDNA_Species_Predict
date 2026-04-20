@@ -71,7 +71,7 @@ class atacDataSimulation():
         death_waiting_distribution_param = 7,
 
         # Number of final existing cells
-        num_extant = 20000,
+        num_extant = 200000,
 
         # number of cells to sample
         num_cells = 1000,

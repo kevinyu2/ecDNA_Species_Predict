@@ -6,8 +6,8 @@ import os
 
 #############################################################################
 
-run_out_dir = Path("/orcd/data/ki/001/lab/jones/kyu06/cass_data/five_species_out/")
-plot_out_dir = "/orcd/data/ki/001/lab/jones/kyu06/cass_data/five_species_figs/"
+run_out_dir = Path("/orcd/data/ki/001/lab/jones/kyu06/cass_data/five_species_out_NNLS/")
+plot_out_dir = "/orcd/data/ki/001/lab/jones/kyu06/cass_data/five_species_figs_NNLS/"
 # plot_out_dir = "~/test/"
 
 # Some options : "num_ecDNA_true", "comb_chance" (cosegregation), "countprov", "fmax", "overlap", 
@@ -35,7 +35,9 @@ use_only_correct_jaccard = True
 os.makedirs(plot_out_dir, exist_ok = True)
 
 # Improve graph
+# TODO: allow customization for which methods we use and naming conventions
 colors = {"Hier" : "blue", "cNMF" : "red"}
+method_names = ["Hier", "cNMF"]
 label_dict = {"num_ecDNA_true" : "Number of True ecDNA Species",
               "comb_chance" : "Cosegregation Strength",
               "countprov" : "Species Number Known",
@@ -287,12 +289,16 @@ if x2 is None :
             
             legend_sizes = [v * 50 / lab_max for v in legend_vals]
             
-            handles = [
+            method_handles = [
+                plt.scatter([], [], color=colors[m], alpha=0.4, label=m)
+                for m in method_names
+            ]            
+            handles = method_handles + [
                 plt.scatter([], [], s=s, color='gray', alpha=0.4)
                 for s in legend_sizes
             ]
             
-            labels = [f"{int(v)}" for v in legend_vals]
+            labels = method_names + [f"{int(v)}" for v in legend_vals]
             
             plt.legend(handles, labels, title="Number of Runs")
 

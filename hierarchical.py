@@ -19,6 +19,7 @@ from pathlib import Path
 import shutil
 from scipy.cluster.hierarchy import linkage, fcluster
 import argparse
+from sklearn.metrics import silhouette_score
 
 ##################################################################
 # Master controls
@@ -51,9 +52,16 @@ parser.add_argument(
 parser.add_argument(
     "--threshold",
     type = float,
-    default = 0.4
-) # TODO: if threshold is not the way to go, also change graphing software to not include this?
-# Might have a score still that punishes having too many clusters, not sure
+    default = 0.4,
+    help="Threshold silhouette score needs to cross to not choose k = 1. Should be between -1 and 1"
+) 
+
+parser.add_argument(
+    "--max-species",
+    type = int,
+    default = 7,
+    help="Maximum species to check if species count not known"
+) 
 
 
 
@@ -78,23 +86,50 @@ else :
     full_out_dir = f'{out_dir}/hier_countprov_0_thresh_{threshold}'
     full_result_dir = f'{out_dir}/hier_results_countprov_0_thresh_{threshold}'
 
+# If not known, will try these species
+nums_to_try = [i for i in range(2, args.max_species + 1)]
+
+# Threshold for choosing k = 1 (if max silhouette is not over this)
+silhouette_threshold = args.threshold
+
 #################################################
 pd.set_option('display.max_rows', None)
 pd.set_option('display.max_columns', None)
 
+
+# Calculate the best number of ecDNA species to try for hierarchical clustering
+# Uses hierarchical clustering, except if nothing passes some threshold, use 1
+# Returns the number of ecDNA
+def find_num_ecDNA(X, nums_to_try, silhouette_threshold) :
+    best_num = -1
+    best_silhouette = -1
+
+    for i in nums_to_try :
+        Z = linkage(X, method='average', metric='correlation')
+        clusters = fcluster(Z, t=i, criterion='maxclust')
+
+        silhouette = silhouette_score(X, clusters, metric = 'correlation')
+        if silhouette > best_silhouette :
+            best_silhouette = silhouette
+            best_num = i
+
+    if best_silhouette < silhouette_threshold :
+        return 1
+    return best_num
+
 # Run cNMF
 # returns: (predicted species count, jaccard, average count err)
-def hier_run(out_dir, out_name, cellbygene, cellbyspecies, metadata_file, threshold, num_ecDNA) :
+def hier_run(out_dir, out_name, cellbygene, cellbyspecies, metadata_file, threshold, num_ecDNA, nums_to_try, silhouette_threshold) :
     os.makedirs(f"{out_dir}/{out_name}/", exist_ok= True)
     cellxgene_df = pd.read_csv(cellbygene, sep = '\t', index_col= 0)
     X = cellxgene_df.T
 
-    if num_ecDNA is not None :
-        Z = linkage(X, method='average', metric='correlation')
-        clusters = fcluster(Z, t=num_ecDNA, criterion='maxclust')
-    else :
-        Z = linkage(X, method='average', metric='correlation')
-        clusters = fcluster(Z, t=threshold, criterion='distance')
+    if num_ecDNA is None :
+        num_ecDNA = find_num_ecDNA(X, nums_to_try, silhouette_threshold)
+        
+
+    Z = linkage(X, method='average', metric='correlation')
+    clusters = fcluster(Z, t=num_ecDNA, criterion='maxclust')
 
     observed = defaultdict(list)
     for i in range(len(clusters)):
@@ -104,7 +139,6 @@ def hier_run(out_dir, out_name, cellbygene, cellbyspecies, metadata_file, thresh
     for key, values in observed.items():
         for v in values:
             reversed_observed[v].append(key)
-        gene_count = max(clusters)
                 
     # Parse metadata
     gt = defaultdict(list)
@@ -173,7 +207,6 @@ def hier_run(out_dir, out_name, cellbygene, cellbyspecies, metadata_file, thresh
 
         avg_jaccard = np.mean(scores)
 
-        print(f"Best score: {avg_jaccard}")
         return mapping, avg_jaccard
 
     mapping, best_jaccard = match_score(observed, gt)
@@ -190,22 +223,23 @@ def hier_run(out_dir, out_name, cellbygene, cellbyspecies, metadata_file, thresh
 
     plt.figure()
     for species in list(cellxspecies_df.columns) :
-        obs_species = reverse_mapping[species]
-        if obs_species in list(observed.keys()) :
-            # Just trust the extra counts of the smallest one and those 1.3 times at most above it (which does not have duplicates hopefully or is on multiple ecDNA)
-            genes = observed[obs_species]
-            gene_sums = cellbygene_temp[genes].sum()
-            min_gene = gene_sums.idxmin()
-            min_value = gene_sums.min()
-            threshold = 1.3 * min_value
-            genes_within_range = gene_sums[gene_sums <= threshold].index.tolist()
-            subset = cellbygene_temp[genes_within_range]
-            avg_list = subset.mean(axis=1).tolist()
+        if species in reverse_mapping.keys() :
+            obs_species = reverse_mapping[species]
+            if obs_species in list(observed.keys()) :
+                # Just trust the extra counts of the smallest one and those 1.3 times at most above it (which does not have duplicates hopefully or is on multiple ecDNA)
+                genes = observed[obs_species]
+                gene_sums = cellbygene_temp[genes].sum()
+                min_gene = gene_sums.idxmin()
+                min_value = gene_sums.min()
+                threshold = 1.3 * min_value
+                genes_within_range = gene_sums[gene_sums <= threshold].index.tolist()
+                subset = cellbygene_temp[genes_within_range]
+                avg_list = subset.mean(axis=1).tolist()
 
-            # Count the total error
-            total_error += ((avg_list - cellxspecies_df[species])**2).sum()
-            total_count += len(avg_list)
-            plt.scatter(avg_list, cellxspecies_df[species], s = 1, alpha = 0.3, label = species)
+                # Count the total error
+                total_error += ((avg_list - cellxspecies_df[species])**2).sum()
+                total_count += len(avg_list)
+                plt.scatter(avg_list, cellxspecies_df[species], s = 1, alpha = 0.3, label = species)
     plt.xlabel(f"Usage")
     plt.ylabel(f"Count")
     plt.legend()
@@ -227,10 +261,9 @@ def hier_run(out_dir, out_name, cellbygene, cellbyspecies, metadata_file, thresh
             f.write(f'Dist cutoff:\t{threshold}\n')
         f.write(f'Best jaccard (species wise):\t{best_jaccard}\n')
         f.write(f"Mapping:\n")
-        print(mapping, file = f)
 
 
-    return gene_count, best_jaccard, avg_count_error
+    return num_ecDNA, best_jaccard, avg_count_error
 
 
 run_results_dir = f"{full_result_dir}/{run_dir.name}/"
@@ -271,22 +304,15 @@ for spec_dir in Path(run_dir).glob("*"):
         metadata_file = cellbygene.replace("cellxgene.tsv", "metadata.txt")
         cellbyspecies = cellbygene.replace("cellxgene.tsv", "cellxspecies.tsv")
         out_name = cellbygene_path.name.split("_cellxgene.tsv")[0]
-        print("OUT NAME")
-        print(out_name)
 
         # try :
-        predicted_species_count, jaccard, count_err = hier_run(run_out_dir, out_name, cellbygene_path, cellbyspecies, metadata_file, threshold, num_ecDNA)
+        predicted_species_count, jaccard, count_err = hier_run(run_out_dir, out_name, cellbygene_path, cellbyspecies, metadata_file, threshold, num_ecDNA, nums_to_try, silhouette_threshold)
         # except Exception as e :
         #     print(f"Error: {e}")
         #     predicted_species_count, jaccard, count_err = 0,0,0
         run_predicted_species_counts[out_name] = predicted_species_count
         run_jaccard[out_name] = jaccard
         run_count_err[out_name] = count_err
-
-        print("UPDATES")
-        print(run_jaccard)
-        print(run_predicted_species_counts)
-        print(run_count_err)
 
     run_predicted_species_counts_list.append(run_predicted_species_counts)
     run_jaccard_list.append(run_jaccard)
