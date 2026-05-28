@@ -27,7 +27,7 @@ parser.add_argument(
 parser.add_argument(
     "--runs",
     type=int,
-    default = 5,
+    default = 10,
     help="Number of runs for each setting"
 )
 
@@ -91,8 +91,30 @@ parser.add_argument(
 parser.add_argument(
     "--min-prop",
     type=float,
-    default = 0.0,
+    default = 0.05,
     help="Reject all simulations where some ecDNA has less than this proportion"
+)
+
+parser.add_argument(
+    "--coseg-type",
+    choices=["venn", "simulation", "coefficient", "real"],
+    default = "venn",
+    help="Method to cosegregate genes"
+)
+
+
+parser.add_argument(
+    "--const-comb",
+    action="store_true",
+    help="Don't vary cosegregation chances"
+)
+
+
+parser.add_argument(
+    "--test-coseg",
+    action="store_true",
+    help="Test cosegregation by only filling in ecDNA 1 and 2 cosegregation. Mostly for development purposes," \
+    "but can be used to determine how a method reacts to just cosegregation of two species alone"
 )
 
 args = parser.parse_args()
@@ -127,19 +149,23 @@ num_extant = args.num_extant
 # Remove any simulations where an ecDNA is in less than this proportion of sampled cells
 min_ecDNA_prop = args.min_prop
 
+# Don't vary combination chance
+const_comb = args.const_comb
+
+# Development test
+test_coseg = args.test_coseg
+
 ##################################################################
 # Don't Need to Change
 ##################################################################
 
-# "coefficient", "venn", or "simulation"
-cosegregation_type = "simulation"
+# "coefficient", "venn", "real", or "simulation"
+cosegregation_type = args.coseg_type 
 
-# For coefficient: simply the amount that follows the first species
-cosegregation_coefficient = 0.5
-# For venn cosegregation: value between 0 & 1, greater means more will end up cosegregating
-venn_cosegregation_strength = 0.5
-# For simulation: average chance to combine (using beta distribution)
-average_combination_chances = [0,0.2,0.4,0.6,0.8]
+# For simulation, average chance to combine (using beta distribution). For venn, is 1 - amount that is guaranteed to go into each
+cosegregation_strengths = [0,0.2,0.4,0.6,0.8]
+
+# For simulation, if we allow ecDNA species to form hubs with themselves
 allow_self_combine = False
 
 out_dir_root = f"{out_dir_main}/fmax_{fitness_max}_overlap_{gene_overlap_proportion}_extracounts_{chance_to_change}_depth_{depth_mean}"
@@ -149,8 +175,8 @@ change_distribution_param = 0.8
 initial_birth_scale = 0.5
 death_waiting_distribution_param = 8
 num_cells_mean = 2000
-capacities = 3
-sim_mult = 1.5
+capacities = 4
+sim_mult = 4
 noise_scale = 1
 
 ##################################################################
@@ -184,7 +210,7 @@ def generate_venn(n, cosegregation_strength):
 
     # remaining capacity for each circle
     remaining = {i: 1.0 for i in range(n)}
-    regions = {}
+    regions = defaultdict(float)
 
     singles = [(i,) for i in range(n)]
     intersections = []
@@ -194,18 +220,17 @@ def generate_venn(n, cosegregation_strength):
     # shuffle intersection order
     random.shuffle(intersections)
 
-    # initialize singles with random values (to prefer the singles)
+    # initialize singles with 1 - cosegregation strength
     for s in singles:
         i = s[0]
-        val = random.random()
-        val = min(val, remaining[i])
+        val = intersection_limiter
         regions[s] = val
         remaining[i] -= val
 
     # fill intersections
     for inter in intersections:
 
-        proposed = max(0.0, random.random() - intersection_limiter)
+        proposed = min(random.random(), cosegregation_strength)
 
         # max allowed without exceeding circle capacity
         max_allowed = min(remaining[i] for i in inter)
@@ -215,6 +240,16 @@ def generate_venn(n, cosegregation_strength):
             regions[inter] = val
             for i in inter:
                 remaining[i] -= val
+
+    # Fill any remaining space
+    for inter in intersections:
+
+        max_allowed = min(remaining[i] for i in inter)
+
+        if max_allowed > 0 :
+            regions[inter] += max_allowed
+            for i in inter:
+                remaining[i] -= max_allowed
 
     # Remove singles
     for s in singles:
@@ -228,15 +263,26 @@ def rand_with_mean(m, strength=15):
     beta = (1 - m) * strength
     return random.betavariate(alpha, beta)
 
-def generate_coseg_matrix(matrix_dim, mean, allow_self_combine) :
+def generate_coseg_matrix(matrix_dim, mean, allow_self_combine, const_comb, test_coseg) :
     matrix = np.zeros((matrix_dim, matrix_dim))
     for i in range(matrix_dim) :
         for j in range(i + 1) :
             if i == j and not allow_self_combine :
                 continue
-            random_val = rand_with_mean(mean)
+            if const_comb :
+                random_val = mean
+            else :
+                random_val = rand_with_mean(mean)
             matrix[i][j] = random_val
             matrix[j][i] = random_val
+
+    # Just have 0,1 as nonzero
+    if test_coseg :
+        matrix_final = np.zeros((matrix_dim, matrix_dim))
+        matrix_final[0][1] = matrix[0][1]
+        matrix_final[1][0] = matrix[1][0]
+        return matrix_final
+    
     return matrix
 
 # Gets a proportion of genes from each species, and randomly assigns those to venn diagram intersections
@@ -289,8 +335,9 @@ def generate_gene_overlap(counts, overlap_prop):
 ##############################################################
 
 for species_count in species_counts :
-    for average_combination_chance in average_combination_chances :
-        if average_combination_chance <= 0 :
+    for coseg_strength in cosegregation_strengths :
+
+        if coseg_strength <= 0 :
             allow_cosegregation = False
         else :
             allow_cosegregation = True
@@ -300,7 +347,7 @@ for species_count in species_counts :
         capacity = np.full(species_count, capacities)
 
 
-        out_dir = f"{out_dir_root}/{species_count}_species_{average_combination_chance}_comb"
+        out_dir = f"{out_dir_root}/{species_count}_species_{coseg_strength}_comb"
         os.makedirs(out_dir, exist_ok= True)
 
         failures = 0
@@ -320,11 +367,11 @@ for species_count in species_counts :
 
             coeffs = {}
             if allow_cosegregation and cosegregation_type == 'venn' :
-                coeffs = generate_venn(species_count, venn_cosegregation_strength)
+                coeffs = generate_venn(species_count, coseg_strength)
 
             mat = np.zeros((species_count, species_count))
-            if allow_cosegregation and cosegregation_type == 'simulation' :
-                mat = generate_coseg_matrix(species_count, average_combination_chance, allow_self_combine)
+            if allow_cosegregation and (cosegregation_type == 'simulation' or cosegregation_type == 'real'):
+                mat = generate_coseg_matrix(species_count, coseg_strength, allow_self_combine, const_comb, test_coseg)
 
             try:
                 sim = atacDataSimulation(

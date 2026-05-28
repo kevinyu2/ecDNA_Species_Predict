@@ -33,7 +33,7 @@ class atacDataSimulation():
         fitness_array,
 
         # "venn", "coefficient", or "simulation"
-        cosegregation_type: Literal['venn', 'coefficient', 'simulation'],
+        cosegregation_type: Literal['venn', 'coefficient', 'simulation', 'real'],
 
         ############################################################
         # Gene parameters
@@ -191,7 +191,7 @@ class atacDataSimulation():
             species_percentages[species] = counts[(counts[species] >= 1)].shape[0] / counts.shape[0] * 100
             if species_percentages[species] == 0 :
                 raise ecDNABirthDeathSimulatorError("One or more ecDNA species went extinct")
-            if species_list[species] < self.min_ecDNA_prop * 100 :
+            if species_percentages[species] < self.min_ecDNA_prop * 100 :
                 raise ecDNABirthDeathSimulatorError(f"One or more ecDNA species underneath provided percentage cutoff {self.min_ecDNA_prop }")
 
 

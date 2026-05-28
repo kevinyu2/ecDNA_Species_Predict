@@ -59,16 +59,8 @@ parser.add_argument(
 parser.add_argument(
     "--max-species",
     type = int,
-    default = 6,
-    help="Maximum species to check if species count not known"
-) 
-
-
-parser.add_argument(
-    "--leeway",
-    type = float,
-    default = 0.1,
-    help="Amount allowed to deviate from max silhouette score"
+    default = None,
+    help="Maximum species to check if species count not known. If none, will be based on the "
 ) 
 
 
@@ -81,23 +73,19 @@ args = parser.parse_args()
 know_ecDNA = args.know_ecDNA
 # If not known, will do clustering based off a distance threshold cutoff
 threshold = args.threshold
-leeway = args.leeway
 
 # directory with the data of the run
 run_dir = Path(args.run_dir)
 # Full location of where we print things
 out_dir = args.out_dir
 
-
 if know_ecDNA :
     full_out_dir = f'{out_dir}/hier_countprov_1_thresh_0'
     full_result_dir = f'{out_dir}/hier_results_countprov_1_thresh_0'
 else :
-    full_out_dir = f'{out_dir}/hier_countprov_0_leeway_{leeway}'
-    full_result_dir = f'{out_dir}/hier_results_countprov_0_leeway_{leeway}'
+    full_out_dir = f'{out_dir}/hier_countprov_0_thresh_{threshold}'
+    full_result_dir = f'{out_dir}/hier_results_countprov_0_thresh_{threshold}'
 
-# If not known, will try these species
-nums_to_try = [i for i in range(2, args.max_species + 1)]
 
 # Threshold for choosing k = 1 (if max silhouette is not over this)
 silhouette_threshold = args.threshold
@@ -110,13 +98,16 @@ pd.set_option('display.max_columns', None)
 # Calculate the best number of ecDNA species to try for hierarchical clustering
 # Uses hierarchical clustering, except if nothing passes some threshold, use 1
 # Returns the number of ecDNA
-def find_num_ecDNA(X, nums_to_try, silhouette_threshold, leeway = 0.1) :
+def find_num_ecDNA(X, max_species, silhouette_threshold, leeway = 0) :
     best_num = -1
     best_silhouette = -1
     silhouettes = []
-    
-    best_score_track = 0
-    best_sil_track = 0
+
+    if max_species is None :
+        max_species, _ = X.shape
+
+    nums_to_try = [i for i in range(2, max_species + 1)]
+
 
     for i in nums_to_try :
         Z = linkage(X, method='average', metric='correlation')
@@ -126,35 +117,36 @@ def find_num_ecDNA(X, nums_to_try, silhouette_threshold, leeway = 0.1) :
         silhouettes.append(silhouette)
         if silhouette > best_silhouette :
             best_silhouette = silhouette
-            best_sil_track = i
+
+    print("---")
+    print(silhouettes)
+    print(Z[:, 2])
 
     if best_silhouette < silhouette_threshold :
+        print(f"Predicted Species Count: 1")
         return 1
     
     # Allow some leeway around the silhouette score, to favor greater values wiht just slightly worse silhouette scores
     for idx, s in enumerate(silhouettes) :
         if s >= best_silhouette - leeway :
             best_num = nums_to_try[idx]
-            best_score_track = s
-    
-    print("---")
-    print(silhouettes)
-    print(Z[:,2])
 
+    print(f"Predicted Species Count: {best_num}")
     return best_num
 
 # Run cNMF
 # returns: (predicted species count, jaccard, average count err)
-def hier_run(out_dir, out_name, cellbygene, cellbyspecies, metadata_file, threshold, num_ecDNA, nums_to_try, silhouette_threshold, leeway) :
+def hier_run(out_dir, out_name, cellbygene, cellbyspecies, metadata_file, threshold, num_ecDNA, max_species, silhouette_threshold) :
     os.makedirs(f"{out_dir}/{out_name}/", exist_ok= True)
     cellxgene_df = pd.read_csv(cellbygene, sep = '\t', index_col= 0)
-    X = cellxgene_df.T
+    X = cellxgene_df
+    embed = np.corrcoef(X, rowvar=False)
 
     if num_ecDNA is None :
-        num_ecDNA = find_num_ecDNA(X, nums_to_try, silhouette_threshold, leeway)
+        num_ecDNA = find_num_ecDNA(embed, max_species, silhouette_threshold)
         
 
-    Z = linkage(X, method='average', metric='correlation')
+    Z = linkage(embed, method='average', metric='correlation')
     clusters = fcluster(Z, t=num_ecDNA, criterion='maxclust')
 
     observed = defaultdict(list)
@@ -165,6 +157,9 @@ def hier_run(out_dir, out_name, cellbygene, cellbyspecies, metadata_file, thresh
     for key, values in observed.items():
         for v in values:
             reversed_observed[v].append(key)
+
+    # TEMPORARY: this one tracks how many distinct ecDNA profiles there are within genes
+    unique_gene_sets = set()
                 
     # Parse metadata
     gt = defaultdict(list)
@@ -180,8 +175,11 @@ def hier_run(out_dir, out_name, cellbygene, cellbyspecies, metadata_file, thresh
                 continue
 
             gene, species = line.split(":\t")
+            unique_gene_sets.add(species)
             for p in species.split("\t"):
                 gt[p].append(gene)
+
+    print(f"Number of unique gene - ecDNA interactions: {len(unique_gene_sets)}")
 
     # Find out which predicted ecDNA matches to which gt ecDNA
     # Uses hungarian algorithm, with distances defined by jaccard index between gene sets
@@ -291,7 +289,7 @@ def hier_run(out_dir, out_name, cellbygene, cellbyspecies, metadata_file, thresh
         f.write(f"Mapping:\n")
 
 
-    return num_ecDNA, best_jaccard, avg_count_error
+    return num_ecDNA, best_jaccard, avg_count_error, len(unique_gene_sets)
 
 
 run_results_dir = f"{full_result_dir}/{run_dir.name}/"
@@ -334,11 +332,13 @@ for spec_dir in Path(run_dir).glob("*"):
         out_name = cellbygene_path.name.split("_cellxgene.tsv")[0]
 
         # try :
-        predicted_species_count, jaccard, count_err = hier_run(run_out_dir, out_name, cellbygene_path, cellbyspecies, metadata_file, threshold, num_ecDNA, nums_to_try, silhouette_threshold, leeway)
+        predicted_species_count, jaccard, count_err, num_unique = hier_run(run_out_dir, out_name, cellbygene_path, cellbyspecies, metadata_file, threshold, num_ecDNA, args.max_species, silhouette_threshold)
         # except Exception as e :
         #     print(f"Error: {e}")
         #     predicted_species_count, jaccard, count_err = 0,0,0
         run_predicted_species_counts[out_name] = predicted_species_count
+        run_predicted_species_counts[f"{out_name}_true_unique"] = num_unique
+
         run_jaccard[out_name] = jaccard
         run_count_err[out_name] = count_err
 
@@ -349,5 +349,6 @@ for spec_dir in Path(run_dir).glob("*"):
 (pd.DataFrame(run_predicted_species_counts_list)).to_csv(run_predicted_species_counts_file, index = None, sep = '\t')
 (pd.DataFrame(run_jaccard_list)).to_csv(run_jaccard_file, index = None, sep = '\t')
 (pd.DataFrame(run_count_err_list)).to_csv(run_count_err_file, index = None, sep = '\t')
+
 
 
