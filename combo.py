@@ -3,25 +3,21 @@
 # Usage: hierarchical.py [run dir (should have the run info in name)] [out dir (main folder, automatically generates specific name)]
 ########################################################################
 
-import sys
 import numpy as np
-import random
 from collections import defaultdict
 from scipy.optimize import linear_sum_assignment
 import pandas as pd
-import anndata as ad
-import scipy.sparse as sp
-import scanpy as sc
-from scipy.stats import pearsonr
 import matplotlib.pyplot as plt
 import os
 from pathlib import Path
-import shutil
 from scipy.cluster.hierarchy import linkage, fcluster
 import argparse
 from sklearn.metrics import silhouette_score
 from sklearn.metrics import pairwise_distances
 import time
+import heapq
+from scipy.optimize import nnls
+
 
 ##################################################################
 # Master controls
@@ -59,6 +55,13 @@ parser.add_argument(
 ) 
 
 parser.add_argument(
+    "--cNMF-threshold",
+    type = float,
+    default = 0.55,
+    help="NNLS per cell distance threshold to choose to use cNMF"
+) 
+
+parser.add_argument(
     "--max-species",
     type = int,
     default = None,
@@ -76,17 +79,25 @@ know_ecDNA = args.know_ecDNA
 # If not known, will do clustering based off a distance threshold cutoff
 dummydist = args.dummy_distance
 
+cNMF_thresh = args.cNMF_threshold
+
 # directory with the data of the run
 run_dir = Path(args.run_dir)
+# fmax_0.1_overlap_0.4_extracounts_0.1_depth_1.0
+if "overlap_" in args.run_dir :
+    overlap = float(args.run_dir.split('overlap_')[-1].split('_')[0])
+else :
+    overlap = 0
+
 # Full location of where we print things
 out_dir = args.out_dir
 
 if know_ecDNA :
-    full_out_dir = f'{out_dir}/hier_countprov_1_ddist_0'
-    full_result_dir = f'{out_dir}/hier_results_countprov_1_ddist_0'
+    full_out_dir = f'{out_dir}/combo_countprov_1_thresh_0'
+    full_result_dir = f'{out_dir}/combo_results_countprov_1_thresh_0'
 else :
-    full_out_dir = f'{out_dir}/hier_countprov_0_ddist_{dummydist}'
-    full_result_dir = f'{out_dir}/hier_results_countprov_0_ddist_{dummydist}'
+    full_out_dir = f'{out_dir}/combo_countprov_0_thresh_{cNMF_thresh}'
+    full_result_dir = f'{out_dir}/combo_results_countprov_0_thresh_{cNMF_thresh}'
 
 #################################################
 pd.set_option('display.max_rows', None)
@@ -150,15 +161,6 @@ def find_num_ecDNA(X, max_species, ddist, leeway = 0) :
         if silhouette > best_silhouette :
             best_silhouette = silhouette
 
-    print("---")
-    print(silhouettes)
-    print(Z[:, 2])
-    for i in range(1,len(Z[:, 2])) :
-        print(Z[:, 2][i-1]/Z[:, 2][i])
-
-    # if best_silhouette < silhouette_threshold :
-    #     print(f"Predicted Species Count: 1")
-    #     return 1
     
     # Allow some leeway around the silhouette score, to favor greater values wiht just slightly worse silhouette scores
     for idx, s in enumerate(silhouettes) :
@@ -168,10 +170,122 @@ def find_num_ecDNA(X, max_species, ddist, leeway = 0) :
     print(f"Predicted Species Count: {best_num}")
     return best_num
 
+def check_overlap(X, clusters, cNMF_thresh) :
+    X = X - 2
+    cluster_no = len(set(clusters))
+    
+    # Only applicable if more than 3 clusters, so just return something that will return false
+    if cluster_no < 3 :
+        return False
+
+    # pairwise_errors = []
+
+    # # Find how to normalize the errors
+    # for cluster_i in range(1, cluster_no + 1):
+
+    #     members = [
+    #         X.iloc[:, cc].values
+    #         for cc, k in enumerate(clusters)
+    #         if k == cluster_i
+    #     ]
+
+    #     if len(members) < 2:
+    #         continue
+
+    #     for i in range(len(members)):
+    #         for j in range(i + 1, len(members)):
+
+    #             diff = members[i] - members[j]
+
+    #             # keep only coordinates where members[i] < 1
+    #             mask = members[i] < 0.5
+
+    #             pairwise_errors.append(diff[mask])
+
+    # # concatenate all selected differences into one vector
+    # if len(pairwise_errors) > 0:
+    #     pairwise_error_rmse = np.mean(np.concatenate(pairwise_errors))
+    # else:
+    #     pairwise_error_rmse = 0.0
+
+    # print(f"Pairwise: {pairwise_error_rmse}")
+
+    # The representative vector is just a sum of the vectors from each cluster
+    representative_vectors = np.zeros((cluster_no, len(X)))
+
+    gene_counts = np.zeros(cluster_no)
+
+    # Add each vector to the representative vector
+    for cluster_i in range(1, cluster_no + 1) :
+        for cc, k in enumerate(clusters) :
+            if k == cluster_i :
+                representative_vectors[k-1] += X.iloc[:, cc].values
+                gene_counts[k- 1] += 1
+
+    rng = np.random.default_rng(42)
+
+
+    cluster_means = representative_vectors / gene_counts[:, None]
+ 
+    errors = []
+
+    for i in range(representative_vectors.shape[0]):
+        rel_test_error = 0
+        for repeat in range(20):
+            target = cluster_means[i]
+            others = np.delete(cluster_means, i, axis=0)
+
+            # Only use coordinates where average gene count is > 0.5
+            valid_idx = np.where((target > 3))[0]
+
+            if len(valid_idx) < 2:
+                continue  # not enough points to split
+
+            train_idx = rng.choice(
+                valid_idx,
+                size=max(1, len(valid_idx) // 2),
+                replace=False
+            )
+
+            test_mask = np.isin(valid_idx, train_idx, invert=True)
+            test_idx = valid_idx[test_mask]
+
+            if len(test_idx) == 0:
+                continue
+
+            # Fit on train coordinates only
+            coeffs, *_ = np.linalg.lstsq(
+                others[:, train_idx].T,
+                target[train_idx],
+                rcond=None
+            )
+
+
+            # Predict full vector
+            prediction = coeffs @ others
+
+            # Evaluate on held-out coordinates
+            rel_test_error += (
+                np.linalg.norm(target[test_idx] - prediction[test_idx])
+                / np.sqrt(len(test_idx))
+            )
+
+            rel_test_error /= 20
+
+        errors.append(rel_test_error)
+        print(rel_test_error)
+
+    lowest_three = heapq.nsmallest(3, errors)
+
+    return all(x < cNMF_thresh for x in lowest_three)
+        
+
 # Run cNMF
 # returns: (predicted species count, jaccard, average count err)
-def hier_run(out_dir, out_name, cellbygene, cellbyspecies, metadata_file, num_ecDNA, max_species, ddist) :
+def combo_run(out_dir, out_name, cellbygene, cellbyspecies, metadata_file, num_ecDNA, max_species, ddist, cNMF_thresh) :
     os.makedirs(f"{out_dir}/{out_name}/", exist_ok= True)
+
+    print(f"Number of ecDNA (True) : {num_ecDNA_true}")
     cellxgene_df = pd.read_csv(cellbygene, sep = '\t', index_col= 0)
     X = cellxgene_df
     embed = np.corrcoef(X, rowvar=False)
@@ -183,6 +297,23 @@ def hier_run(out_dir, out_name, cellbygene, cellbyspecies, metadata_file, num_ec
     Z = linkage(embed, method='average', metric='correlation')
     clusters = fcluster(Z, t=num_ecDNA, criterion='maxclust')
 
+    # Continue with hierarchical
+    if not check_overlap(X, clusters, cNMF_thresh) :
+        return hier_run(clusters, cellxgene_df, out_dir, out_name, cellbyspecies, metadata_file, num_ecDNA, max_species)
+    
+    else :
+        print("Predicted Overlap")
+        # TODO: actually run cNMF!
+        # Here, I will estimate by just pulling it out of the cNMF results (so I don't have to rerun this right this moment. Want to make sure everything else is good first)
+        
+        # num_ecDNA, best_jaccard, avg_count_error
+
+        return -1, -1, -1
+    
+
+
+def hier_run(clusters, cellxgene_df, out_dir, out_name, cellbyspecies, metadata_file, num_ecDNA, max_species) :
+    
     observed = defaultdict(list)
     for i in range(len(clusters)):
         observed[f"pred_ecDNA_{clusters[i]}"].append(cellxgene_df.columns[i])
@@ -279,33 +410,104 @@ def hier_run(out_dir, out_name, cellbygene, cellbyspecies, metadata_file, num_ec
     total_error = 0
     total_count = 0
 
+    print(reverse_mapping)
+
+    # NNLS setup: create species by gene matrix (assume no overlaps at this point)
+    species_profiles = {}
+
+    for pred_species, genes in observed.items():
+
+        gene_sums = cellbygene_temp[genes].sum()
+
+        min_value = gene_sums.min()
+        threshold = 1.2 * min_value
+
+        # These give us the average to divide by to get genes per species
+        baseline_genes = gene_sums[gene_sums <= threshold]
+        baseline_mean = baseline_genes.mean()
+
+        profile = pd.Series(
+            0.0,
+            index=cellbygene_temp.columns,
+            dtype=float
+        )
+
+        for gene in genes:
+
+            profile[gene] = gene_sums[gene] / baseline_mean
+
+        species_profiles[pred_species] = profile
+
+    # gene by species matrix
+    gene_by_species = pd.DataFrame(species_profiles)
+    A = gene_by_species.values
+
+    pred_species_usage = []
+
+    for cell in cellbygene_temp.index:
+
+        b = cellbygene_temp.loc[cell].values
+
+        x, residual = nnls(A, b)
+
+        pred_species_usage.append(x)
+
+    pred_species_df = pd.DataFrame(
+        pred_species_usage,
+        index=cellbygene_temp.index,
+        columns=gene_by_species.columns
+    )
+
+    # print(pred_species_df.head())
+    # print(cellxspecies_df.head())
+
+    pred_species_df.rename(columns=mapping, inplace=True)
+    total_error = 0
+    total_count = 0
+
+
     plt.figure()
     for species in list(cellxspecies_df.columns) :
-        if species in reverse_mapping.keys() :
-            obs_species = reverse_mapping[species]
-            if obs_species in list(observed.keys()) :
-                # Just trust the extra counts of the smallest one and those 1.3 times at most above it (which does not have duplicates hopefully or is on multiple ecDNA)
-                genes = observed[obs_species]
-                gene_sums = cellbygene_temp[genes].sum()
-                min_gene = gene_sums.idxmin()
-                min_value = gene_sums.min()
-                threshold = 1.3 * min_value
-                genes_within_range = gene_sums[gene_sums <= threshold].index.tolist()
-                subset = cellbygene_temp[genes_within_range]
-                avg_list = subset.mean(axis=1).values
+        if species in list(pred_species_df.columns) :
+            total_error += ((pred_species_df[species] - cellxspecies_df[species])**2).sum()
+            total_count += len(pred_species_df[species])
+            plt.scatter(pred_species_df[species], cellxspecies_df[species], s = 1, alpha = 0.3, label = species)
 
-                # Count the total error
-                total_error += ((avg_list - cellxspecies_df[species])**2).sum()
-                total_count += len(avg_list)
-                plt.scatter(avg_list, cellxspecies_df[species].values, s = 1, alpha = 0.3, label = species)
     plt.xlabel(f"Usage")
     plt.ylabel(f"Count")
     plt.legend()
     plt.savefig(f"{out_dir}/{out_name}/{out_name}.usage_map.png")
-    plt.close()
-
     avg_count_error = total_error / total_count
 
+    # plt.figure()
+    # for species in list(cellxspecies_df.columns) :
+    #     if species in reverse_mapping.keys() :
+    #         obs_species = reverse_mapping[species]
+    #         if obs_species in list(observed.keys()) :
+    #             # Just trust the extra counts of the smallest one and those 1.3 times at most above it (which does not have duplicates hopefully or is on multiple ecDNA)
+    #             genes = observed[obs_species]
+    #             gene_sums = cellbygene_temp[genes].sum()
+    #             min_gene = gene_sums.idxmin()
+    #             min_value = gene_sums.min()
+    #             threshold = 1.3 * min_value
+
+    #             baseline_genes = gene_sums[gene_sums <= threshold]
+    #             baseline_mean = baseline_genes.mean()
+    #             genes_within_range = gene_sums[gene_sums <= threshold].index.tolist()
+    #             subset = cellbygene_temp[genes_within_range]
+    #             avg_list = subset.mean(axis=1).values
+
+    #             # Count the total error
+    #             total_error += ((avg_list - cellxspecies_df[species])**2).sum()
+    #             total_count += len(avg_list)
+    #             plt.scatter(avg_list, cellxspecies_df[species].values, s = 1, alpha = 0.3, label = species)
+    # plt.xlabel(f"Usage")
+    # plt.ylabel(f"Count")
+    # plt.legend()
+    # plt.savefig(f"{out_dir}/{out_name}/{out_name}.usage_map.png")
+    # plt.close()
+
+    # avg_count_error = total_error / total_count
 
     # Make a predictions file
     with open(f"{out_dir}/{out_name}/{out_name}.predictions.txt", 'w') as f:
@@ -323,7 +525,7 @@ def hier_run(out_dir, out_name, cellbygene, cellbyspecies, metadata_file, num_ec
         f.write(f"Mapping:\n")
 
 
-    return num_ecDNA, best_jaccard, avg_count_error, len(unique_gene_sets)
+    return num_ecDNA, best_jaccard, avg_count_error
 
 
 run_results_dir = f"{full_result_dir}/{run_dir.name}/"
@@ -339,6 +541,9 @@ run_predicted_species_counts_list = []
 run_jaccard_list = []
 run_count_err_list = []
 run_time_list = []
+
+num_predicted_overlap = 0
+total_done = 0
 
 for spec_dir in Path(run_dir).glob("*"):
     # Should be in the file names
@@ -371,12 +576,17 @@ for spec_dir in Path(run_dir).glob("*"):
         start = time.time()
 
         # try :
-        predicted_species_count, jaccard, count_err, num_unique = hier_run(run_out_dir, out_name, cellbygene_path, cellbyspecies, metadata_file, num_ecDNA, args.max_species, dummydist)
+        predicted_species_count, jaccard, count_err = combo_run(run_out_dir, out_name, cellbygene_path, cellbyspecies, metadata_file, num_ecDNA, args.max_species, dummydist, cNMF_thresh)
+        # TODO: remove this
+        if predicted_species_count == -1 :
+            num_predicted_overlap += 1
+        total_done += 1
+        # if overlap > 0 and predicted_species_count == -1 :
+        #     predicted_species_count = num_ecDNA_true
         # except Exception as e :
         #     print(f"Error: {e}")
         #     predicted_species_count, jaccard, count_err = 0,0,0
         run_predicted_species_counts[out_name] = predicted_species_count
-        run_predicted_species_counts[f"{out_name}_true_unique"] = num_unique
 
         run_jaccard[out_name] = jaccard
         run_count_err[out_name] = count_err
@@ -386,6 +596,9 @@ for spec_dir in Path(run_dir).glob("*"):
     run_jaccard_list.append(run_jaccard)
     run_count_err_list.append(run_count_err)
     run_time_list.append(run_time)
+
+print(f"Overlap: {overlap}, Predicted: {num_predicted_overlap}/{total_done}")
+
 
 (pd.DataFrame(run_predicted_species_counts_list)).to_csv(run_predicted_species_counts_file, index = None, sep = '\t')
 (pd.DataFrame(run_jaccard_list)).to_csv(run_jaccard_file, index = None, sep = '\t')

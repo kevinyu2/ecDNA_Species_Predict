@@ -3,27 +3,35 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 import os
+import math
 
 
+run_out_dir = "../const_sim_out_withnaive"
+plot_out_dir = "./const_sim_out_full_figs"
 
-run_out_dir = "/orcd/data/ki/001/lab/jones/kyu06/cass_data/const_sim_out_species_unknown/"
-# plot_out_dir = "/orcd/data/ki/001/lab/jones/kyu06/cass_data/const_sim_out_figs/"
-plot_out_dir = "./test_mult_coseg"
+# What to title these in the plots!
+folder_to_name = {
+    "cNMF_results_countprov_0_errorw_0.25" : "cNMF (errorw = 0.25)",
+    "combo_results_countprov_0_thresh_0.55" : "Combo (threshold = 0.55)",
+    "naive_results_countprov_0_thresh_0.75" : "Naive (threshold = 0.75)",
+    "hier_results_countprov_0_ddist_1.3" : "Hier (dummy weight = 1.3)"
+}
 
-# settings = [{"x" : "depth", "x2" : "comb_chance", "y" : "species_counts", "consts" : {"overlap" : [0], "num_ecDNA_true" : [2,3,4,5]}, "plot_title" : "Percentage with Species Number Correct (No Overlap, 2+ True Species)"},
-#             {"x" : "overlap", "x2" : "comb_chance", "y" : "species_counts", "consts" : {"num_ecDNA_true" : [2,3,4,5]}, "plot_title" : "Percentage with Species Number Correct (2+ True Species)"},
-#             {"x" : "depth", "x2" : "comb_chance", "y" : "jaccard", "consts" : {"overlap" : [0], "num_ecDNA_true" : [2,3,4,5]}, "plot_title" : "Average Jaccard Given Species Number Correct (No Overlap, 2+ True Species)"},
-#             {"x" : "overlap", "x2" : "comb_chance", "y" : "jaccard", "consts" : {"num_ecDNA_true" : [2,3,4,5]}, "plot_title" : "Average Jaccard Given Species Number Correct (2+ True Species)"},
-#             {"x" : "depth", "x2" : "comb_chance", "y" : "count_err", "consts" : {"overlap" : [0], "num_ecDNA_true" : [2,3,4,5]}, "plot_title" : "Average Per Cell Error Given Jaccard = 1 (No Overlap, 2+ True Species)"},
-#             {"x" : "overlap", "x2" : "comb_chance", "y" : "count_err", "consts" : {"num_ecDNA_true" : [2,3,4,5]}, "plot_title" : "Average Per Cell Error Given Jaccard = 1 (2+ True Species)"},
-#             {"x" : "num_ecDNA_true", "x2" : "comb_chance", "y" : "species_counts", "consts" : {"overlap" : [0]}, "plot_title" : "Percentage with Species Number Correct (No Overlap)"},
-#             {"x" : "num_ecDNA_true", "x2" : "comb_chance", "y" : "jaccard", "consts" : {"overlap" : [0]}, "plot_title" : "Average Jaccard Given Species Number Correct (No Overlap)"},
-#             {"x" : "num_ecDNA_true", "x2" : "comb_chance", "y" : "count_err", "consts" : {"overlap" : [0]}, "plot_title" : "Average Per Cell Error Given Jaccard = 1 (No Overlap)"}
-#             ]
-
-settings = [{"x" : "num_ecDNA_true", "x2" : "num_ecDNA_predicted", "y" : "species_counts", "consts" : {"overlap" : [0]}, "plot_title" : "Predicted vs Correct Species Count (No Overlap)"},
-            {"x" : "num_ecDNA_true", "x2" : "num_ecDNA_predicted", "y" : "species_counts", "consts" : {"overlap" : [0.4]}, "plot_title" : "Predicted vs Correct Species Count (0.4 Overlap)"}
-
+# Unique settings for each plot
+settings = [{"x" : "depth", "x2" : "comb_chance", "y" : "species_counts", "consts" : {"overlap" : [0]}, "plot_title" : "Percentage with Species Number Correct (No Overlap)"},
+            {"x" : "overlap", "x2" : "comb_chance", "y" : "species_counts", "consts" : {"num_ecDNA_true" : [2,3,4,5]}, "plot_title" : "Percentage with Species Number Correct (2+ True Species)"},
+            {"x" : "depth", "x2" : "comb_chance", "y" : "jaccard", "consts" : {"overlap" : [0], "num_ecDNA_true" : [2,3,4,5]}, "plot_title" : "Average Jaccard Given Species Number Correct (No Overlap, 2+ True Species)"},
+            {"x" : "overlap", "x2" : "comb_chance", "y" : "jaccard", "consts" : {"num_ecDNA_true" : [2,3,4,5]}, "plot_title" : "Average Jaccard Given Species Number Correct (2+ True Species)"},
+            {"x" : "depth", "x2" : "comb_chance", "y" : "count_err", "consts" : {"overlap" : [0], "num_ecDNA_true" : [2,3,4,5]}, "plot_title" : "Average Per Cell Error Given Jaccard = 1 (No Overlap, 2+ True Species)"},
+            {"x" : "overlap", "x2" : "comb_chance", "y" : "count_err", "consts" : {"num_ecDNA_true" : [2,3,4,5]}, "plot_title" : "Average Per Cell Error Given Jaccard = 1 (2+ True Species)"},
+            {"x" : "num_ecDNA_true", "x2" : "comb_chance", "y" : "species_counts", "consts" : {"overlap" : [0]}, "plot_title" : "Percentage with Species Number Correct (No Overlap)"},
+            {"x" : "num_ecDNA_true", "x2" : "comb_chance", "y" : "jaccard", "consts" : {"overlap" : [0]}, "plot_title" : "Average Jaccard Given Species Number Correct (No Overlap)"},
+            {"x" : "num_ecDNA_true", "x2" : "comb_chance", "y" : "count_err", "consts" : {"overlap" : [0]}, "plot_title" : "Average Per Cell Error Given Jaccard = 1 (No Overlap)"},
+            {"x" : "num_ecDNA_true", "x2" : "num_ecDNA_predicted", "y" : "species_counts", "consts" : {"overlap" : [0]}, "plot_title" : "Predicted vs Correct Species Count (No Overlap)"},
+            {"x" : "num_ecDNA_true", "x2" : "num_ecDNA_predicted", "y" : "species_counts", "consts" : {"overlap" : [0], "depth" : [0.5, 1.0, 1.5, 2.0], "comb_chance" : [0.0, 0.2, 0.4, 0.6]}, "plot_title" : "Predicted vs Correct Species Count (No Overlap, Depth > 0.25, Cosegregation < 0.8)"},
+            {"x" : "num_ecDNA_true", "x2" : "num_ecDNA_predicted", "y" : "species_counts", "consts" : {"overlap" : [0.4]}, "plot_title" : "Predicted vs Correct Species Count (0.4 Overlap)"},
+            {"x" : "num_ecDNA_true", "x2" : "num_ecDNA_predicted", "y" : "species_counts", "consts" : {"overlap" : [0.4], "depth" : [0.5, 1.0, 1.5, 2.0], "comb_chance" : [0.0, 0.2, 0.4, 0.6]}, "plot_title" : "Predicted vs Correct Species Count (Overlap 0.4, Depth > 0.25, Cosegregation < 0.8)"},
+            {"x" : "num_ecDNA_true", "x2" : "num_ecDNA_predicted", "y" : "species_counts", "consts" : {"overlap" : [0.4], "comb_chance" : [0]}, "plot_title" : "Predicted vs Correct Species Count (0.4 Overlap, Coseg 0)"}
             ]
 
 
@@ -35,6 +43,9 @@ def graph_results(
     run_out_dir,
     plot_out_dir,
 
+    count_err_full_df,
+    jaccard_full_df,
+    species_counts_full_df,
     # Some options : "num_ecDNA_true", "comb_chance" (cosegregation), "countprov", "fmax", "overlap", 
     # "extra_counts", "depth", "threshold", "errorw"
     x = "num_ecDNA_true",
@@ -58,8 +69,8 @@ def graph_results(
     
     # Improve graph
     # TODO: allow customization for which methods we use and naming conventions
-    colors = {"Hier" : "blue", "cNMF" : "red"},
-    method_names = ["Hier", "cNMF"],
+    colors = {"hier" : "blue", "cNMF" : "red", "naive" : "green", "combo" : "purple"},
+
     # If none, will attempt to calculate by itself
     plot_title = None
     
@@ -75,7 +86,7 @@ def graph_results(
                   "fmax" : "Maximum Selection Coefficient",
                   "overlap" : "Proportion Genes Overlapped",
                   "extra_counts" : "Chance for Extra Copies of Gene",
-                  "depth" : "Relative Read Depth",
+                  "depth" : "Insertions Per Copy Number (Saturation)",
                   "threshold" : "Hierarchical Threshold",
                   "errorw" : "cNMF Error Score Weight",
                   "count_err" : "ecDNA Count Error Per Cell",
@@ -104,97 +115,7 @@ def graph_results(
     
     pd.set_option('display.max_columns', None)
     
-    count_err_dfs = []
-    jaccard_dfs = []
-    species_counts_dfs = []
-    wrong_species = set()
-    wrong_jaccard = set()
     
-    # Iterate through all results
-    for result_dir in run_out_dir.glob("*results*") :
-        print(f"Processing {result_dir}")
-    
-        # Get metadata embedded in the folder name
-        method, _, _, countprov, _, val = result_dir.name.split('_')
-        countprov = bool(int(countprov))
-        val = float(val)
-    
-        for inner_dir in result_dir.glob("*") :
-    
-            _, fmax, _, overlap, _, extra_counts, _, depth = inner_dir.name.split('_')
-            depth = float(depth)
-            overlap = float(overlap)
-            fmax = float(fmax)
-            extra_counts = float(extra_counts)
-    
-            count_err_df = pd.read_csv(f"{inner_dir}/count_err.tsv", sep = '\t')
-            jaccard_df = pd.read_csv(f"{inner_dir}/jaccard.tsv", sep = '\t')
-            species_counts_df = pd.read_csv(f"{inner_dir}/species_counts.tsv", sep = '\t')
-    
-            # Add metadata
-            for name, df in [("sc", species_counts_df), ("jac", jaccard_df), ("ce", count_err_df)] :
-                # Get wrong species data and populate the correlation
-                if name == "sc" :
-                    df['corr_prop'] = 0.0
-                    df['corr_num'] = 0
-                    for row_idx, row in df.iterrows() :
-                        wrong_count = 0
-                        num_runs = 0
-                        for col in df.columns :
-                            if "run_" in col :
-                                num_runs += 1
-                                if row['num_ecDNA_true'] != row[col] :
-                                    wrong_count += 1
-                                    wrong_species.add((method, val, fmax, overlap, extra_counts, depth, row['num_ecDNA_true'], row['comb_chance'], col))
-                                    
-                        df.loc[row_idx, 'corr_num'] = num_runs
-                        df.loc[row_idx, 'corr_prop'] = (num_runs - wrong_count)/num_runs
-                
-                elif name == "jac" :
-                    # Get wrong jaccard info
-                    # Note: currently only supports average jaccard rather than a binary right / wrong
-                    for row_idx, row in df.iterrows() :
-                        for col in df.columns :
-                            if "run_" in col :
-                                if row[col] < 1 :
-                                    wrong_jaccard.add((method, val, fmax, overlap, extra_counts, depth, row['num_ecDNA_true'], row['comb_chance'], col))
-                                # if in wrong species, remove
-                                if use_only_correct_species and (method, val, fmax, overlap, extra_counts, depth, row['num_ecDNA_true'], row['comb_chance'], col) in wrong_species :
-                                    df.loc[row_idx, col] = np.nan
-                
-                elif name == "ce" :
-                    # Get wrong jaccard info
-                    for row_idx, row in df.iterrows() :
-                        for col in df.columns :
-                            if "run_" in col :
-                                # remove based on wrong species and jaccard
-                                if use_only_correct_species and (method, val, fmax, overlap, extra_counts, depth, row['num_ecDNA_true'], row['comb_chance'], col) in wrong_species :
-                                    df.loc[row_idx, col] = np.nan
-                                if use_only_correct_jaccard and (method, val, fmax, overlap, extra_counts, depth, row['num_ecDNA_true'], row['comb_chance'], col) in wrong_jaccard :
-                                    df.loc[row_idx, col] = np.nan
-                                    
-                if method == "hier" :
-                    df['method'] = "hier"
-                    df['threshold'] = val
-                elif method == "cNMF" :
-                    df['method'] = "cNMF"
-                    df['errorw'] = val
-                else :
-                    print("ERROR: unknown method (only hier and cNMF known)")
-                    exit(0)
-                df['countprov'] = countprov
-                df['fmax'] = fmax
-                df['overlap'] = overlap
-                df['extra_counts'] = extra_counts
-                df['depth'] = depth
-    
-            count_err_dfs.append(count_err_df)
-            jaccard_dfs.append(jaccard_df)
-            species_counts_dfs.append(species_counts_df)
-    
-    count_err_full_df = pd.concat(count_err_dfs, ignore_index=True)
-    jaccard_full_df = pd.concat(jaccard_dfs, ignore_index=True)
-    species_counts_full_df = pd.concat(species_counts_dfs, ignore_index=True)
     
     # For three variable grid plots, extract 3 cols
     def extract_points(df, row_cols, x_col, y_col):
@@ -253,14 +174,19 @@ def graph_results(
     
         return Z_mean, final_counts
     
-    def build_truevspred(df) :
-        runcols = [c for c in df.columns if c.startswith("run_")]
-        max_pred = int(df[runcols].max().max())
-        max_true = int(df["num_ecDNA_true"].max())
+    def build_truevspred(df, displaymax = 6) :
+        runcols = [c for c in df.columns if c.startswith("run_") and not c.endswith('unique')]
+        max_pred = min(displaymax, int(df[runcols].max().max()))
+        max_true = min(displaymax, int(df["num_ecDNA_true"].max()))
         Z = np.zeros((max_pred, max_true))
         for idx, row in df.iterrows() :
             for colname in runcols :
-                Z[int(row[colname]) - 1][int(row["num_ecDNA_true"]) - 1] += 1
+                if pd.isna(row[colname]) or pd.isna(row["num_ecDNA_true"]):
+                    continue         
+                rowidx = min(displaymax, int(row[colname])) - 1
+                colidx = min(displaymax, int(row["num_ecDNA_true"])) - 1
+
+                Z[rowidx][colidx] += 1
         
         return Z
     
@@ -286,7 +212,7 @@ def graph_results(
             total_num = 0
             total_sum = 0
             for col in df_to_use.columns :
-                if "run_" in col : 
+                if "run_" in col and 'unique' not in col : 
                     if not pd.isna(row[col]) :
                         total_num += 1
                         total_sum += row[col]
@@ -308,180 +234,390 @@ def graph_results(
         row_cols = [col for col in df_to_use.columns if col.startswith("run_")] 
     
     
-    hier = df_to_use.loc[df_to_use["method"] == "hier"]
-    cNMF = df_to_use.loc[df_to_use["method"] == "cNMF"]
-    
+    method_names = df_to_use['mname'].unique()
+
+    dfs = []
+    titles = []
+    for mname in method_names :
+        dfs.append(df_to_use.loc[df_to_use["mname"] == mname])
+        titles.append(mname)
     
     
     if x2 is None :
-        for df_name, method_name in [(hier, "Hier"), (cNMF, "cNMF")] :
-            x_plot = []
-            y_plot = []
-            lab_plot = []
-            lab_max = -1
+        print("Currently not supporting x2 == None")
+        exit(0)
+        # for df_name, method_name in [(hier, "Hier"), (cNMF, "cNMF")] :
+        #     x_plot = []
+        #     y_plot = []
+        #     lab_plot = []
+        #     lab_max = -1
     
-            # Add non NaN values to plot
-            if not use_mean : 
-                for i, row in df_name.iterrows() :
-                    for rcol in row_cols :
-                        if pd.isna(row[rcol]) == False :
-                            y_plot.append(row[rcol])
-                            x_plot.append(row[x])
-                plt.scatter(x_plot, y_plot, label=method_name, color = colors[method_name], alpha=0.4)
-                plt.legend()
+        #     # Add non NaN values to plot
+        #     if not use_mean : 
+        #         for i, row in df_name.iterrows() :
+        #             for rcol in row_cols :
+        #                 if pd.isna(row[rcol]) == False :
+        #                     y_plot.append(row[rcol])
+        #                     x_plot.append(row[x])
+        #         plt.scatter(x_plot, y_plot, label=method_name, color = colors[method_name], alpha=0.4)
+        #         plt.legend()
     
     
-            # Also include how many there are
-            else :
-                for i, row in df_name.iterrows() :
-                    for rcol in row_cols :
-                        if pd.isna(row[rcol]) == False :
-                            y_plot.append(row[rcol])
-                            x_plot.append(row[x])
-                            lab_plot.append(row["num_runs"])
-                            lab_max = max(lab_max, row["num_runs"])
+        #     # Also include how many there are
+        #     else :
+        #         for i, row in df_name.iterrows() :
+        #             for rcol in row_cols :
+        #                 if pd.isna(row[rcol]) == False :
+        #                     y_plot.append(row[rcol])
+        #                     x_plot.append(row[x])
+        #                     lab_plot.append(row["num_runs"])
+        #                     lab_max = max(lab_max, row["num_runs"])
     
-                # Sort lists for line plot
-                combined = list(zip(x_plot, y_plot, lab_plot))
-                combined_sorted = sorted(combined, key=lambda x: x[0])
-                x_plot, y_plot, lab_plot = zip(*combined_sorted)
-                plt.scatter(x_plot, y_plot, label=method_name, color = colors[method_name], alpha=0.4, s = 50 * np.array(lab_plot)/lab_max)
+        #         # Sort lists for line plot
+        #         combined = list(zip(x_plot, y_plot, lab_plot))
+        #         combined_sorted = sorted(combined, key=lambda x: x[0])
+        #         x_plot, y_plot, lab_plot = zip(*combined_sorted)
+        #         plt.scatter(x_plot, y_plot, label=method_name, color = colors[method_name], alpha=0.4, s = 50 * np.array(lab_plot)/lab_max)
                 
-                # Size legend
-                legend_vals = [lab_max * 0.25, lab_max * 0.5, lab_max * 0.75, lab_max]
+        #         # Size legend
+        #         legend_vals = [lab_max * 0.25, lab_max * 0.5, lab_max * 0.75, lab_max]
                 
-                legend_sizes = [v * 50 / lab_max for v in legend_vals]
+        #         legend_sizes = [v * 50 / lab_max for v in legend_vals]
                 
-                method_handles = [
-                    plt.scatter([], [], color=colors[m], alpha=0.4, label=m)
-                    for m in method_names
-                ]            
-                handles = method_handles + [
-                    plt.scatter([], [], s=s, color='gray', alpha=0.4)
-                    for s in legend_sizes
-                ]
+        #         method_handles = [
+        #             plt.scatter([], [], color=colors[m], alpha=0.4, label=m)
+        #             for m in method_names
+        #         ]            
+        #         handles = method_handles + [
+        #             plt.scatter([], [], s=s, color='gray', alpha=0.4)
+        #             for s in legend_sizes
+        #         ]
                 
-                labels = method_names + [f"{int(v)}" for v in legend_vals]
+        #         labels = method_names + [f"{int(v)}" for v in legend_vals]
                 
-                plt.legend(handles, labels, title="Number of Runs")
+        #         plt.legend(handles, labels, title="Number of Runs")
     
       
-        plt.xlabel(label_dict[x])
-        plt.ylabel(label_dict[y])
-        if plot_title is None :
-            plt.title(f"{label_dict[y]} cNMF vs Hierarchical" , fontsize=16)
-        else :
-            plt.title(plot_title, fontsize = 16)
+        # plt.xlabel(label_dict[x])
+        # plt.ylabel(label_dict[y])
+        # if plot_title is None :
+        #     plt.title(f"{label_dict[y]} cNMF vs Hierarchical" , fontsize=16)
+        # else :
+        #     plt.title(plot_title, fontsize = 16)
     
     # Grid plot             
     else :
-        # print(cNMF)
 
-        if "TRUEVSPRED" in row_cols :
-            # Build grids
-            Z1_temp = build_truevspred(cNMF)
-            Z2_temp = build_truevspred(hier)
-            
-            # Pad any gaps
-            rows = max(Z1_temp.shape[0], Z2_temp.shape[0])
-            cols = max(Z1_temp.shape[1], Z2_temp.shape[1])
-            
-            Z1 = np.zeros((rows, cols), dtype=int)
-            Z2 = np.zeros((rows, cols), dtype=int)
-            
-            Z1[:Z1_temp.shape[0], :Z1_temp.shape[1]] = Z1_temp
-            Z2[:Z2_temp.shape[0], :Z2_temp.shape[1]] = Z2_temp
-            
-            
-            x_unique = range(1, cols + 1)
-            y_unique = range(1, rows + 1)
+        # Get axes
+        n_plots = len(dfs)
+        ncols = min(3, n_plots)
+        if n_plots % 2 == 0 and n_plots % 3 != 0 :
+            ncols = 2
+        nrows = math.ceil(n_plots / ncols)
+
+        fig, axes = plt.subplots(
+            nrows,
+            ncols,
+            figsize=(5 * ncols, 5 * nrows),
+            sharex=True,
+            sharey=True
+        )
+
+        axes = np.atleast_1d(axes).ravel()
+
+        all_Z = []
+        all_counts = []
+
+        all_x = []
+        all_y = []
+
+        if 'TRUEVSPRED' not in row_cols :
+
+            # Get the axis buckets
+            for df in dfs:
+                xv, yv, zv, nums = extract_points(df, row_cols, x, x2)
+
+                all_x.append(xv)
+                all_y.append(yv)
+
+            x_unique = np.unique(np.concatenate(all_x))
+            y_unique = np.unique(np.concatenate(all_y))
+
+            # Build Z
+            for df in dfs:
+                xv, yv, zv, nums = extract_points(df, row_cols, x, x2)
+
+                Z, counts = build_grid_from_points(
+                    xv, yv, zv,
+                    x_unique,
+                    y_unique,
+                    -1,
+                    nums
+                )
+
+                all_Z.append(Z)
+                all_counts.append(counts)
+
+
         else :
-    
-            # extract x, y, z from cNMF and hier
-            # nums is if you are doing species_counts
-            x1, y1, z1, nums = extract_points(cNMF, row_cols, x, x2)
-            x2_, y2_, z2, nums = extract_points(hier, row_cols, x, x2)
-        
-            # union the axes
-            x_unique = np.unique(np.concatenate([x1, x2_]))
-            y_unique = np.unique(np.concatenate([y1, y2_]))
-        
-        
-            # Build grids
-            Z1, count1 = build_grid_from_points(x1, y1, z1, x_unique, y_unique, -1, nums)
-            Z2, count2 = build_grid_from_points(x2_, y2_, z2, x_unique, y_unique, -1, nums)
-            
+            rows = 0
+            cols = 0
+            # First run to get the borders
+            for df in dfs :
+                Z = build_truevspred(df)
+
+                rows = max(rows, Z.shape[0])
+                cols = max(cols, Z.shape[1])
+
+            # now fill in the actual with padding
+            for df in dfs :
+                Z = build_truevspred(df)
+
+                Z_pad = np.zeros((rows, cols), dtype=int)
+                Z_pad[:Z.shape[0], :Z.shape[1]] = Z
+
+                all_Z.append(Z_pad)
+                all_counts.append(None)
+
+                x_unique = range(1, cols + 1)
+                y_unique = range(1, rows + 1)
+
     
         # Allow some wiggle room in color (otherwise breaks when all are perfect)
-        vmin = min(Z1.min(), Z2.min()) - 0.001
-        vmax = max(Z1.max(), Z2.max()) + 0.001
-    
-        fig, axes = plt.subplots(1, 2, figsize=(12, 5), sharex=True, sharey=True)
-    
-        im1 = axes[0].imshow(Z1, origin='lower', cmap='viridis', vmin=vmin, vmax=vmax)
-        axes[0].set_title("cNMF")
-    
-    
-        im2 = axes[1].imshow(Z2, origin='lower', cmap='viridis', vmin=vmin, vmax=vmax)
-        axes[1].set_title("Hierarchical")
-    
-        # Horizontal and vertical axis (just one vertical, shared)
-        axes[0].set_xlabel(label_dict[x])
-        axes[0].set_ylabel(label_dict[x2])
-        axes[1].set_xlabel(label_dict[x])
-    
-        for ax in axes:
+        vmin = min(Z.min() for Z in all_Z) - 0.001
+        vmax = max(Z.max() for Z in all_Z) + 0.001
+
+
+        for ax, Z, counts, title in zip(axes, all_Z, all_counts, titles):
+
+            im = ax.imshow(
+                Z,
+                origin="lower",
+                cmap="viridis",
+                vmin=vmin,
+                vmax=vmax
+            )
+
+            ax.set_title(title)
+
             ax.set_xticks(range(len(x_unique)))
             ax.set_xticklabels(x_unique)
+
             ax.set_yticks(range(len(y_unique)))
             ax.set_yticklabels(y_unique)
-            
 
-        for i in range(len(y_unique)):
-            for j in range(len(x_unique)):
-                # Z values (top-left, bigger)
-                if count1[i, j] > 0:
-                    axes[0].text(j - 0.3, i + 0.3,
-                                f"{Z1[i,j]:.2f}",
-                                ha='left', va='top',
-                                color='white', fontsize=10, fontweight='bold')
-                                
-                    if "TRUEVSPRED" not in row_cols :
-                        axes[0].text(j + 0.3, i - 0.3,
-                                    f"n={count1[i,j]}",
-                                    ha='right', va='bottom',
-                                    color='white', fontsize=7)
-    
-                if count2[i, j] > 0:
-                    axes[1].text(j - 0.3, i + 0.3,
-                                f"{Z2[i,j]:.2f}",
-                                ha='left', va='top',
-                                color='white', fontsize=10, fontweight='bold')
-                                
-                    if "TRUEVSPRED" not in row_cols :
-                        axes[1].text(j + 0.3, i - 0.3,
-                                    f"n={count2[i,j]}",
-                                    ha='right', va='bottom',
-                                    color='white', fontsize=7)
-                    
-        # Reserve space on the right for colorbar
-        fig.subplots_adjust(right=0.85)  # leave 15% for colorbar
+            # add labels
+            if "TRUEVSPRED" not in row_cols:
+                for i in range(len(y_unique)):
+                    for j in range(len(x_unique)):
+                        if counts[i, j] > 0:
+                            ax.text(
+                                j - 0.3, i + 0.3,
+                                f"{Z[i,j]:.2f}",
+                                ha="left", va="top",
+                                color="white",
+                                fontsize=10,
+                                fontweight="bold"
+                            )
+
+                            ax.text(
+                                j + 0.3, i - 0.3,
+                                f"n={counts[i,j]}",
+                                ha="right", va="bottom",
+                                color="white",
+                                fontsize=7
+                            )
+            else:
+                for i in range(len(y_unique)):
+                    for j in range(len(x_unique)):
+                        ax.text(
+                            j - 0.3,
+                            i + 0.3,
+                            f"{Z[i,j]}",
+                            ha="left",
+                            va="top",
+                            color="white",
+                            fontsize=10,
+                            fontweight="bold"
+                        )
         
-        if plot_title is None :
-            fig.suptitle(f"{label_dict[y]} cNMF vs Hierarchical" , fontsize=16)
-        else :
-            fig.suptitle(plot_title , fontsize=16)
-    
-        # Place colorbar in the reserved space
-        cbar_ax = fig.add_axes([0.88, 0.15, 0.03, 0.7])  # [left, bottom, width, height]
-        fig.colorbar(im1, cax=cbar_ax, label="Value")
-        
-        
-    
+        # Hide unused axes (like if there are 5)
+        for ax in axes[n_plots:]:
+            ax.set_visible(False)
+
+        # Common labels
+        for ax in axes[:n_plots]:
+            ax.set_xlabel(label_dict[x])
+
+        for ax in axes[::ncols]:
+            ax.set_ylabel(label_dict[x2])
+
+        fig.subplots_adjust(right=0.88)
+
+        cbar_ax = fig.add_axes([0.90, 0.15, 0.02, 0.7])
+        fig.colorbar(im, cax=cbar_ax, label="Value")
+
+
+        if plot_title is None:
+            fig.suptitle(
+                f"{label_dict[y]} Comparison",
+                fontsize=16
+            )
+        else:
+            fig.suptitle(
+                plot_title,
+                fontsize=16
+            )
+            
     print(f"Outputting to {plot_name}")
     plt.savefig(plot_name)
 
+def get_dfs(run_out_dir, folder_to_name, use_only_correct_species = True, use_only_correct_jaccard = True) :
+
+    count_err_dfs = []
+    jaccard_dfs = []
+    species_counts_dfs = []
+    wrong_species = set()
+    wrong_jaccard = set()
+
+    # Give an order to the iteration
+    priority = {
+        "naive": 0,
+        "hier": 1,
+        "cNMF": 2,
+        "combo": 3,
+    }
+
+    sorted_keys = sorted(
+        folder_to_name,
+        key=lambda k: next(
+            priority[p]
+            for p in priority
+            if k.startswith(p)
+        )
+    )
+
+    # For combo
+    cNMF_log = {}
+    
+    # Iterate through all results
+    for folder_name in sorted_keys:
+        result_dir = Path(f"{run_out_dir}/{folder_name}")
+        print(f"Processing {result_dir}")
+    
+        # Get metadata embedded in the folder name
+        method, _, _, countprov, _, val = result_dir.name.split('_')
+        countprov = bool(int(countprov))
+        val = float(val)
+    
+        for inner_dir in result_dir.glob("*") :
+    
+            _, fmax, _, overlap, _, extra_counts, _, depth = inner_dir.name.split('_')
+            depth = float(depth)
+            overlap = float(overlap)
+            fmax = float(fmax)
+            extra_counts = float(extra_counts)
+    
+            count_err_df = pd.read_csv(f"{inner_dir}/count_err.tsv", sep = '\t')
+            jaccard_df = pd.read_csv(f"{inner_dir}/jaccard.tsv", sep = '\t')
+            species_counts_df = pd.read_csv(f"{inner_dir}/species_counts.tsv", sep = '\t')
+            
+    
+            # Add metadata
+            for name, df in [("sc", species_counts_df), ("jac", jaccard_df), ("ce", count_err_df)] :
+
+                df['method'] = method
+                df['val'] = val
+                df['mname'] = folder_to_name[folder_name]
+                df['countprov'] = countprov
+                df['fmax'] = fmax
+                df['overlap'] = overlap
+                df['extra_counts'] = extra_counts
+                df['depth'] = depth
+
+                # Get wrong species data and populate the correlation
+                if name == "sc" :
+                    df['corr_prop'] = 0.0
+                    df['corr_num'] = 0
+                    for row_idx, row in df.iterrows() :
+                        wrong_count = 0
+                        num_runs = 0
+                        for col_idx, col in enumerate(df.columns) :
+                            if "run_" in col and 'unique' not in col :
+                                
+                                # For combo, remove later
+                                if method == "cNMF" :
+                                    cNMF_log[("sc", fmax, overlap, extra_counts, depth, row['num_ecDNA_true'], row['comb_chance'], col)] = row[col]
+                                if method == "combo" and row[col] == -1 :
+                                    
+                                    df.iloc[row_idx, col_idx] = cNMF_log[("sc", fmax, overlap, extra_counts, depth, row['num_ecDNA_true'], row['comb_chance'], col)]
+                                    row[col] = cNMF_log[("sc", fmax, overlap, extra_counts, depth, row['num_ecDNA_true'], row['comb_chance'], col)]
+
+
+                                num_runs += 1
+                                if row['num_ecDNA_true'] != row[col] :
+                                    wrong_count += 1
+                                    wrong_species.add((method, val, fmax, overlap, extra_counts, depth, row['num_ecDNA_true'], row['comb_chance'], col))
+                                    
+                        df.loc[row_idx, 'corr_num'] = num_runs
+                        df.loc[row_idx, 'corr_prop'] = (num_runs - wrong_count)/num_runs
+                
+                elif name == "jac" :
+                    # Get wrong jaccard info
+                    # Note: currently only supports average jaccard rather than a binary right / wrong
+                    for row_idx, row in df.iterrows() :
+                        for col_idx, col in enumerate(df.columns) :
+                            if "run_" in col and 'unique' not in col :
+                                # For combo, remove later
+                                if method == "cNMF" :
+                                    cNMF_log[("jac", fmax, overlap, extra_counts, depth, row['num_ecDNA_true'], row['comb_chance'], col)] = row[col]
+                                if method == "combo" and row[col] == -1 :
+                                    
+                                    df.iloc[row_idx, col_idx] = cNMF_log[("jac", fmax, overlap, extra_counts, depth, row['num_ecDNA_true'], row['comb_chance'], col)]
+
+                                    row[col] = cNMF_log[("jac", fmax, overlap, extra_counts, depth, row['num_ecDNA_true'], row['comb_chance'], col)]
+
+
+                                if row[col] < 1 :
+                                    wrong_jaccard.add((method, val, fmax, overlap, extra_counts, depth, row['num_ecDNA_true'], row['comb_chance'], col))
+                                # if in wrong species, remove
+                                if use_only_correct_species and (method, val, fmax, overlap, extra_counts, depth, row['num_ecDNA_true'], row['comb_chance'], col) in wrong_species :
+                                    df.loc[row_idx, col] = np.nan
+
+                                
+                
+                elif name == "ce" :
+                    # Get wrong jaccard info
+                    for row_idx, row in df.iterrows() :
+                        for col_idx, col in enumerate(df.columns) :
+                            if "run_" in col and 'unique' not in col :
+
+                                # For combo, remove later
+                                if method == "cNMF" :
+                                    cNMF_log[("ce", fmax, overlap, extra_counts, depth, row['num_ecDNA_true'], row['comb_chance'], col)] = row[col]
+                                if method == "combo" and row[col] == -1 :
+                                    df.iloc[row_idx, col_idx] = cNMF_log[("ce", fmax, overlap, extra_counts, depth, row['num_ecDNA_true'], row['comb_chance'], col)]
+
+
+                                # remove based on wrong species and jaccard
+                                if use_only_correct_species and (method, val, fmax, overlap, extra_counts, depth, row['num_ecDNA_true'], row['comb_chance'], col) in wrong_species :
+                                    df.loc[row_idx, col] = np.nan
+                                if use_only_correct_jaccard and (method, val, fmax, overlap, extra_counts, depth, row['num_ecDNA_true'], row['comb_chance'], col) in wrong_jaccard :
+                                    df.loc[row_idx, col] = np.nan
+
+    
+            count_err_dfs.append(count_err_df)
+            jaccard_dfs.append(jaccard_df)
+            species_counts_dfs.append(species_counts_df)
+    
+    count_err_full_df = pd.concat(count_err_dfs, ignore_index=True)
+    jaccard_full_df = pd.concat(jaccard_dfs, ignore_index=True)
+    species_counts_full_df = pd.concat(species_counts_dfs, ignore_index=True)
+
+    return count_err_full_df, jaccard_full_df, species_counts_full_df
+
+ce, j, sc = get_dfs(run_out_dir, folder_to_name)
 
 for args in settings :
-    graph_results(run_out_dir, plot_out_dir, **args)
+    graph_results(run_out_dir, plot_out_dir, ce, j, sc, **args)
 

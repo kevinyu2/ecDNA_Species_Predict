@@ -88,6 +88,15 @@ parser.add_argument(
     help="Number of final cells in the simulation"
 )
 
+
+parser.add_argument(
+    "--num-genes",
+    type=int,
+    default = 30,
+    help="Number of genes total"
+)
+
+
 parser.add_argument(
     "--min-prop",
     type=float,
@@ -169,7 +178,7 @@ cosegregation_strengths = [0,0.2,0.4,0.6,0.8]
 allow_self_combine = False
 
 out_dir_root = f"{out_dir_main}/fmax_{fitness_max}_overlap_{gene_overlap_proportion}_extracounts_{chance_to_change}_depth_{depth_mean}"
-gene_count_total = 30
+gene_count_total = args.total_genes
 gene_count_std = 0
 change_distribution_param = 0.8
 initial_birth_scale = 0.5

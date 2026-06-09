@@ -20,7 +20,7 @@ from pathlib import Path
 import shutil
 import argparse
 from scipy.optimize import nnls
-
+import time
 
 ###############################################################
 
@@ -87,7 +87,8 @@ n_iter = args.iter
 # True means we provide to the program the exact number of ecDNA
 know_ecDNA = args.know_ecDNA
 # Numbers to check (if num_ecDNA is none)
-counts_to_check = np.arange(1,1+args.max_species)
+# Adds one because the scoring method requires knowing the k+1'th result
+counts_to_check = np.arange(1,2+args.max_species)
 # parameter determining importance of error in choosing the best number of ecDNA
 # stability - error_w * normalzied_error
 error_w = args.errorw
@@ -110,6 +111,7 @@ pd.set_option('display.max_columns', None)
 # Run cNMF
 # returns: (predicted species count, jaccard, average count error)
 def cNMF_run(cellbygene_df, out_dir, out_name, cellbygene, cellbyspecies, metadata_file, score_cutoff, n_iter, num_ecDNA, counts_to_check, error_w, density_threshold) :
+    max_count = max(counts_to_check)
     os.makedirs(out_dir, exist_ok=True)
     cnmf_obj = cNMF(output_dir=out_dir, name=out_name)
     check_one = False
@@ -171,12 +173,24 @@ def cNMF_run(cellbygene_df, out_dir, out_name, cellbygene, cellbyspecies, metada
                 prediction_error = ((norm_counts.X - rf_pred) ** 2).sum().sum()
 
             new_row = pd.DataFrame([{'k' : 1, 'local_density_threshold' : 0.5, "silhouette" : 1, "prediction_error" : prediction_error}])
-            k_df = pd.concat([k_df, new_row], ignore_index=True)
+            k_df = pd.concat([new_row, k_df], ignore_index=True)
 
         max_score = max(k_df['prediction_error'])
 
         k_df['normalized_prediction_error'] = (k_df['prediction_error']) / (max_score)
-        k_df['score'] = k_df['silhouette'] - error_w * k_df['normalized_prediction_error']
+
+        # Ratio between current prediction and the prediction score of k + 1 (minus 1, otherwise they are all greater than 1 really as it should decrease)
+        # Default to something that can never be picked (realistically)
+        k_df['prediction_ratio'] = 100 / error_w
+
+        for count in counts_to_check :
+            if count < max_count :
+                row_k = k_df[k_df["k"] == count].iloc[0]
+                row_kp1 = k_df[k_df["k"] == count+ 1].iloc[0]
+                k_df.loc[k_df["k"] == count, "prediction_ratio"] = ((row_k['normalized_prediction_error'] + 1e-5) / (row_kp1['normalized_prediction_error'] + 1e-5)) - 1 
+
+
+        k_df['score'] = k_df['silhouette'] - error_w * k_df['prediction_ratio']
 
         print(k_df)
         num_ecDNA = int(k_df.loc[k_df['score'].idxmax()]['k'])
@@ -402,10 +416,12 @@ os.makedirs(run_results_dir, exist_ok=True)
 run_predicted_species_counts_file = f"{run_results_dir}/species_counts.tsv"
 run_jaccard_file = f"{run_results_dir}/jaccard.tsv"
 run_count_err_file = f"{run_results_dir}/count_err.tsv"
+run_time_file = f"{run_results_dir}/runtime.tsv"
 
 run_predicted_species_counts_list = []
 run_jaccard_list = []
 run_count_err_list = []
+run_time_list = []
 
 for spec_dir in Path(run_dir).glob("*"):
     # Should be in the file names
@@ -426,6 +442,7 @@ for spec_dir in Path(run_dir).glob("*"):
     run_predicted_species_counts = {"num_ecDNA_true" : num_ecDNA_true, "comb_chance" : comb_chance}
     run_jaccard = {"num_ecDNA_true" : num_ecDNA_true, "comb_chance" : comb_chance}
     run_count_err = {"num_ecDNA_true" : num_ecDNA_true, "comb_chance" : comb_chance}
+    run_time = {"num_ecDNA_true" : num_ecDNA_true, "comb_chance" : comb_chance}
 
 
     for cellbygene_path in Path(spec_dir).glob("*_cellxgene.tsv") :
@@ -443,6 +460,8 @@ for spec_dir in Path(run_dir).glob("*"):
         cellbygene_temp_path = cellbygene.replace("cellxgene.tsv", "cellxgene_temp.tsv")
         cellbygene_temp.to_csv(cellbygene_temp_path, sep = '\t')
 
+        start = time.time()
+
         try :
             predicted_species_count, jaccard, avg_count_error = cNMF_run(cellbygene_temp, run_out_dir, out_name, cellbygene_temp_path, cellbyspecies, metadata_file, score_cutoff, n_iter, num_ecDNA, counts_to_check, error_w, density_threshold)
         except Exception as e :
@@ -451,14 +470,17 @@ for spec_dir in Path(run_dir).glob("*"):
         run_predicted_species_counts[out_name] = predicted_species_count
         run_jaccard[out_name] = jaccard
         run_count_err[out_name] = avg_count_error
+        run_time[out_name] = time.time() - start
 
     run_predicted_species_counts_list.append(run_predicted_species_counts)
     run_jaccard_list.append(run_jaccard)
     run_count_err_list.append(run_count_err)
+    run_time_list.append(run_time)
 
 (pd.DataFrame(run_predicted_species_counts_list)).to_csv(run_predicted_species_counts_file, index = None, sep = '\t')
 (pd.DataFrame(run_jaccard_list)).to_csv(run_jaccard_file, index = None, sep = '\t')
 (pd.DataFrame(run_count_err_list)).to_csv(run_count_err_file, index = None, sep = '\t')
+(pd.DataFrame(run_time_list)).to_csv(run_time_file, index = None, sep = '\t')
 
 
 

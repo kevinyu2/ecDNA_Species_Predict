@@ -1,7 +1,8 @@
 ########################################################################
-# Runs hierarchical clustering on simulated data and generates statistics
-# Usage: hierarchical.py [run dir (should have the run info in name)] [out dir (main folder, automatically generates specific name)]
+# Runs NAIVE hierarchical clustering on simulated data and generates statistics
+# Usage: naive_hier.py [run dir (should have the run info in name)] [out dir (main folder, automatically generates specific name)]
 ########################################################################
+
 
 import sys
 import numpy as np
@@ -20,6 +21,7 @@ import shutil
 from scipy.cluster.hierarchy import linkage, fcluster
 import argparse
 from sklearn.metrics import silhouette_score
+import time
 
 ##################################################################
 # Master controls
@@ -52,23 +54,8 @@ parser.add_argument(
 parser.add_argument(
     "--threshold",
     type = float,
-    default = 0.4,
-    help="Threshold silhouette score needs to cross to not choose k = 1. Should be between -1 and 1"
-) 
-
-parser.add_argument(
-    "--max-species",
-    type = int,
-    default = 6,
-    help="Maximum species to check if species count not known"
-) 
-
-
-parser.add_argument(
-    "--leeway",
-    type = float,
-    default = 0.1,
-    help="Amount allowed to deviate from max silhouette score"
+    default = 0.75,
+    help="Threshold for distance to add to same cluster"
 ) 
 
 
@@ -81,7 +68,6 @@ args = parser.parse_args()
 know_ecDNA = args.know_ecDNA
 # If not known, will do clustering based off a distance threshold cutoff
 threshold = args.threshold
-leeway = args.leeway
 
 # directory with the data of the run
 run_dir = Path(args.run_dir)
@@ -90,74 +76,33 @@ out_dir = args.out_dir
 
 
 if know_ecDNA :
-    full_out_dir = f'{out_dir}/hier_countprov_1_thresh_0'
-    full_result_dir = f'{out_dir}/hier_results_countprov_1_thresh_0'
+    full_out_dir = f'{out_dir}/naive_countprov_1_thresh_0'
+    full_result_dir = f'{out_dir}/naive_results_countprov_1_thresh_0'
 else :
-    full_out_dir = f'{out_dir}/hier_countprov_0_leeway_{leeway}'
-    full_result_dir = f'{out_dir}/hier_results_countprov_0_leeway_{leeway}'
+    full_out_dir = f'{out_dir}/naive_countprov_0_thresh_{threshold}'
+    full_result_dir = f'{out_dir}/naive_results_countprov_0_thresh_{threshold}'
 
-# If not known, will try these species
-nums_to_try = [i for i in range(2, args.max_species + 1)]
-
-# Threshold for choosing k = 1 (if max silhouette is not over this)
-silhouette_threshold = args.threshold
 
 #################################################
 pd.set_option('display.max_rows', None)
 pd.set_option('display.max_columns', None)
 
 
-# Calculate the best number of ecDNA species to try for hierarchical clustering
-# Uses hierarchical clustering, except if nothing passes some threshold, use 1
-# Returns the number of ecDNA
-def find_num_ecDNA(X, nums_to_try, silhouette_threshold, leeway = 0.1) :
-    best_num = -1
-    best_silhouette = -1
-    silhouettes = []
-    
-    best_score_track = 0
-    best_sil_track = 0
-
-    for i in nums_to_try :
-        Z = linkage(X, method='average', metric='correlation')
-        clusters = fcluster(Z, t=i, criterion='maxclust')
-
-        silhouette = silhouette_score(X, clusters, metric = 'correlation')
-        silhouettes.append(silhouette)
-        if silhouette > best_silhouette :
-            best_silhouette = silhouette
-            best_sil_track = i
-
-    if best_silhouette < silhouette_threshold :
-        return 1
-    
-    # Allow some leeway around the silhouette score, to favor greater values wiht just slightly worse silhouette scores
-    for idx, s in enumerate(silhouettes) :
-        if s >= best_silhouette - leeway :
-            best_num = nums_to_try[idx]
-            best_score_track = s
-    
-    print("---")
-    print(silhouettes)
-    print(Z[:,2])
-    for i in range(1,len(Z[:, 2])) :
-        print(Z[:, 2][i-1]/Z[:, 2][i])
-
-    return best_num
-
-# Run cNMF
+# Run hier naive
 # returns: (predicted species count, jaccard, average count err)
-def hier_run(out_dir, out_name, cellbygene, cellbyspecies, metadata_file, threshold, num_ecDNA, nums_to_try, silhouette_threshold, leeway) :
+def hier_run(out_dir, out_name, cellbygene, cellbyspecies, metadata_file, threshold, num_ecDNA) :
     os.makedirs(f"{out_dir}/{out_name}/", exist_ok= True)
     cellxgene_df = pd.read_csv(cellbygene, sep = '\t', index_col= 0)
     X = cellxgene_df.T
 
     if num_ecDNA is None :
-        num_ecDNA = find_num_ecDNA(X, nums_to_try, silhouette_threshold, leeway)
-        
+        Z = linkage(X, method='average', metric='correlation')
+        clusters = fcluster(Z, t=threshold, criterion='distance')
+        num_ecDNA = np.unique(clusters).size
 
-    Z = linkage(X, method='average', metric='correlation')
-    clusters = fcluster(Z, t=num_ecDNA, criterion='maxclust')
+    else :
+        Z = linkage(X, method='average', metric='correlation')
+        clusters = fcluster(Z, t=num_ecDNA, criterion='maxclust')
 
     observed = defaultdict(list)
     for i in range(len(clusters)):
@@ -262,10 +207,10 @@ def hier_run(out_dir, out_name, cellbygene, cellbyspecies, metadata_file, thresh
                 threshold = 1.3 * min_value
                 genes_within_range = gene_sums[gene_sums <= threshold].index.tolist()
                 subset = cellbygene_temp[genes_within_range]
-                avg_list = subset.mean(axis=1).tolist()
+                avg_list = subset.mean(axis=1).values
 
                 # Count the total error
-                total_error += ((avg_list - cellxspecies_df[species])**2).sum()
+                total_error += ((avg_list - cellxspecies_df[species].values)**2).sum()
                 total_count += len(avg_list)
                 plt.scatter(avg_list, cellxspecies_df[species], s = 1, alpha = 0.3, label = species)
     plt.xlabel(f"Usage")
@@ -303,10 +248,12 @@ os.makedirs(run_results_dir, exist_ok=True)
 run_predicted_species_counts_file = f"{run_results_dir}/species_counts.tsv"
 run_jaccard_file = f"{run_results_dir}/jaccard.tsv"
 run_count_err_file = f"{run_results_dir}/count_err.tsv"
+run_time_file = f"{run_results_dir}/runtime.tsv"
 
 run_predicted_species_counts_list = []
 run_jaccard_list = []
 run_count_err_list = []
+run_time_list = []
 
 for spec_dir in Path(run_dir).glob("*"):
     # Should be in the file names
@@ -327,6 +274,8 @@ for spec_dir in Path(run_dir).glob("*"):
     run_predicted_species_counts = {"num_ecDNA_true" : num_ecDNA_true, "comb_chance" : comb_chance}
     run_jaccard = {"num_ecDNA_true" : num_ecDNA_true, "comb_chance" : comb_chance}
     run_count_err = {"num_ecDNA_true" : num_ecDNA_true, "comb_chance" : comb_chance}
+    run_time = {"num_ecDNA_true" : num_ecDNA_true, "comb_chance" : comb_chance}
+
 
 
     for cellbygene_path in Path(spec_dir).glob("*_cellxgene.tsv") :
@@ -335,21 +284,27 @@ for spec_dir in Path(run_dir).glob("*"):
         cellbyspecies = cellbygene.replace("cellxgene.tsv", "cellxspecies.tsv")
         out_name = cellbygene_path.name.split("_cellxgene.tsv")[0]
 
+        # Start time before function call
+        start = time.time()
+
         # try :
-        predicted_species_count, jaccard, count_err = hier_run(run_out_dir, out_name, cellbygene_path, cellbyspecies, metadata_file, threshold, num_ecDNA, nums_to_try, silhouette_threshold, leeway)
+        predicted_species_count, jaccard, count_err = hier_run(run_out_dir, out_name, cellbygene_path, cellbyspecies, metadata_file, threshold, num_ecDNA)
         # except Exception as e :
         #     print(f"Error: {e}")
         #     predicted_species_count, jaccard, count_err = 0,0,0
         run_predicted_species_counts[out_name] = predicted_species_count
         run_jaccard[out_name] = jaccard
         run_count_err[out_name] = count_err
+        run_time[out_name] = time.time() - start
 
     run_predicted_species_counts_list.append(run_predicted_species_counts)
     run_jaccard_list.append(run_jaccard)
     run_count_err_list.append(run_count_err)
+    run_time_list.append(run_time)
 
 (pd.DataFrame(run_predicted_species_counts_list)).to_csv(run_predicted_species_counts_file, index = None, sep = '\t')
 (pd.DataFrame(run_jaccard_list)).to_csv(run_jaccard_file, index = None, sep = '\t')
 (pd.DataFrame(run_count_err_list)).to_csv(run_count_err_file, index = None, sep = '\t')
+(pd.DataFrame(run_time_list)).to_csv(run_time_file, index = None, sep = '\t')
 
 
