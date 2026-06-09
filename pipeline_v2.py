@@ -88,15 +88,6 @@ parser.add_argument(
     help="Number of final cells in the simulation"
 )
 
-
-parser.add_argument(
-    "--num-genes",
-    type=int,
-    default = 30,
-    help="Number of genes total"
-)
-
-
 parser.add_argument(
     "--min-prop",
     type=float,
@@ -124,6 +115,28 @@ parser.add_argument(
     action="store_true",
     help="Test cosegregation by only filling in ecDNA 1 and 2 cosegregation. Mostly for development purposes," \
     "but can be used to determine how a method reacts to just cosegregation of two species alone"
+)
+
+parser.add_argument(
+    "--sim-mult",
+    type=float,
+    default = 1.4,
+    help="Multiplier for simulation cosegregation (greater means more correlation)"
+)
+
+
+parser.add_argument(
+    "--total-genes",
+    type=int,
+    default = 30,
+    help="How many genes to use in total"
+)
+
+parser.add_argument(
+    "--num-cells",
+    type=int,
+    default = 2000,
+    help="How many cells on average to retrieve"
 )
 
 args = parser.parse_args()
@@ -164,6 +177,15 @@ const_comb = args.const_comb
 # Development test
 test_coseg = args.test_coseg
 
+sim_mult = args.sim_mult
+
+# Total genes
+gene_count_total = args.total_genes
+
+# Average number of cells
+num_cells_mean = args.num_cells
+
+
 ##################################################################
 # Don't Need to Change
 ##################################################################
@@ -173,19 +195,18 @@ cosegregation_type = args.coseg_type
 
 # For simulation, average chance to combine (using beta distribution). For venn, is 1 - amount that is guaranteed to go into each
 cosegregation_strengths = [0,0.2,0.4,0.6,0.8]
+if (cosegregation_type == "simulation" or cosegregation_type == "real") and not test_coseg :
+    cosegregation_strengths = [0,0.2,0.4,0.6]
 
 # For simulation, if we allow ecDNA species to form hubs with themselves
 allow_self_combine = False
 
 out_dir_root = f"{out_dir_main}/fmax_{fitness_max}_overlap_{gene_overlap_proportion}_extracounts_{chance_to_change}_depth_{depth_mean}"
-gene_count_total = args.total_genes
 gene_count_std = 0
 change_distribution_param = 0.8
 initial_birth_scale = 0.5
-death_waiting_distribution_param = 8
-num_cells_mean = 2000
-capacities = 4
-sim_mult = 4
+death_waiting_distribution_param = 9
+capacities = 5
 noise_scale = 1
 
 ##################################################################
@@ -286,7 +307,7 @@ def generate_coseg_matrix(matrix_dim, mean, allow_self_combine, const_comb, test
             matrix[j][i] = random_val
 
     # Just have 0,1 as nonzero
-    if test_coseg :
+    if test_coseg and matrix_dim > 1:
         matrix_final = np.zeros((matrix_dim, matrix_dim))
         matrix_final[0][1] = matrix[0][1]
         matrix_final[1][0] = matrix[1][0]
@@ -345,6 +366,7 @@ def generate_gene_overlap(counts, overlap_prop):
 
 for species_count in species_counts :
     for coseg_strength in cosegregation_strengths :
+        print(f"Coseg strength: {coseg_strength}")
 
         if coseg_strength <= 0 :
             allow_cosegregation = False
