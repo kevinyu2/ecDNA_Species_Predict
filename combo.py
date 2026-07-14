@@ -235,7 +235,7 @@ def check_overlap(X, clusters, cNMF_thresh) :
             target = cluster_means[i]
             others = np.delete(cluster_means, i, axis=0)
 
-            # Only use coordinates where average gene count is > 0.5
+            # Only use coordinates where average gene count is > 3
             valid_idx = np.where((target > 3))[0]
 
             if len(valid_idx) < 2:
@@ -477,6 +477,7 @@ def hier_run(clusters, cellxgene_df, out_dir, out_name, cellbyspecies, metadata_
     plt.ylabel(f"Count")
     plt.legend()
     plt.savefig(f"{out_dir}/{out_name}/{out_name}.usage_map.png")
+    plt.close()
     avg_count_error = total_error / total_count
 
     # plt.figure()

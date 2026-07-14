@@ -62,7 +62,7 @@ parser.add_argument(
     "--max-species",
     type = int,
     default = None,
-    help="Maximum species to check if species count not known. If none, will be based on the "
+    help="Maximum species to check if species count not known. If none, will be the total number of genes"
 ) 
 
 

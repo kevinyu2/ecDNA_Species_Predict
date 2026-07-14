@@ -64,7 +64,7 @@ parser.add_argument(
 parser.add_argument(
     "--errorw",
     type = float,
-    default = 0.1,
+    default = 0.25,
     help="Weight of error against stability"
 )
 
@@ -117,14 +117,14 @@ def cNMF_run(cellbygene_df, out_dir, out_name, cellbygene, cellbyspecies, metada
     check_one = False
     if num_ecDNA is None :
         if 1 in counts_to_check :
-            cnmf_obj.prepare(counts_fn=cellbygene, tpm_fn = cellbygene, components=counts_to_check[1:], n_iter=n_iter, seed=random.randint(1,1000))
+            cnmf_obj.prepare(counts_fn=cellbygene, tpm_fn = cellbygene, components=counts_to_check[1:], n_iter=n_iter, seed=10)
             check_one = True
 
         else :
-            cnmf_obj.prepare(counts_fn=cellbygene, tpm_fn = cellbygene, components=counts_to_check, n_iter=n_iter, seed=random.randint(1,1000))
+            cnmf_obj.prepare(counts_fn=cellbygene, tpm_fn = cellbygene, components=counts_to_check, n_iter=n_iter, seed=10)
 
     else :
-        cnmf_obj.prepare(counts_fn=cellbygene, tpm_fn = cellbygene, components=num_ecDNA, n_iter=n_iter, seed=random.randint(1,1000))
+        cnmf_obj.prepare(counts_fn=cellbygene, tpm_fn = cellbygene, components=num_ecDNA, n_iter=n_iter, seed=10)
 
 
     input_counts = pd.read_csv(cellbygene, sep = '\t', index_col = 0)
@@ -149,7 +149,7 @@ def cNMF_run(cellbygene_df, out_dir, out_name, cellbygene, cellbyspecies, metada
         if check_one :
             cnmf_obj_1 = cNMF(output_dir=out_dir, name=out_name)
 
-            cnmf_obj_1.prepare(counts_fn=cellbygene, tpm_fn = cellbygene, components=1, n_iter=n_iter, seed=random.randint(1,1000))
+            cnmf_obj_1.prepare(counts_fn=cellbygene, tpm_fn = cellbygene, components=1, n_iter=n_iter, seed=10)
             cnmf_obj_1.save_norm_counts(adata)
             cnmf_obj_1.factorize(worker_i=0, total_workers=1)
             cnmf_obj_1.combine()
