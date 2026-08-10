@@ -21,6 +21,8 @@ import shutil
 import argparse
 from scipy.optimize import nnls
 import time
+from cnmf.cnmf import efficient_ols_all_cols
+
 
 ###############################################################
 
@@ -80,7 +82,7 @@ args = parser.parse_args()
 ###############################################################
 
 # Z score cutoff for inclusion of a gene in an ecDNA
-score_cutoff = 0
+score_cutoff = 1.5
 # Number of NMFs to run
 n_iter = args.iter
 
@@ -208,6 +210,36 @@ def cNMF_run(cellbygene_df, out_dir, out_name, cellbygene, cellbyspecies, metada
         cnmf_obj_1.consensus(k=num_ecDNA, density_threshold=density_threshold)
         usage_df, spectra_scores, spectra_tpm, top_genes = cnmf_obj_1.load_results(K=1, density_threshold=density_threshold, norm_usage = False)
 
+
+    rf_usages = pd.read_csv(f"{out_dir}/{out_name}/{out_name}.usages.k_{num_ecDNA}.dt_{str(density_threshold).replace('.', '_')}.consensus.txt", sep = '\t', index_col = 0)
+    
+    Y = cellbygene_df.values
+    unnormalized_spectra_scores = efficient_ols_all_cols(rf_usages.values, Y, normalize_y = False)
+
+    # Calculating losses to determine which genes belong in which ecDNA
+    #[ecDNA, gene, iter]
+    rows, cols = unnormalized_spectra_scores.shape
+    beta2 = unnormalized_spectra_scores.copy()
+
+    base_loss = np.linalg.norm(Y - (rf_usages.values @ unnormalized_spectra_scores), "fro")**2 / (Y.shape[0] * Y.shape[1])
+    print(f"Base loss: {base_loss}")
+
+    losses = np.zeros((rows, cols))
+
+
+    for i in range(rows) :
+        for j in range(cols) :
+            temp = beta2[i,j]
+            beta2[i,j] = 0
+            usages_new = cellbygene_df.values @ np.linalg.pinv(beta2)
+            Y_hat = usages_new @ beta2
+            loss = np.linalg.norm(Y - Y_hat, "fro")**2 / (Y.shape[0] * Y.shape[1])
+            beta2[i,j] = temp
+            losses[i,j] = loss - base_loss
+
+    unnormalized_spectra_scores = pd.DataFrame(unnormalized_spectra_scores.T, columns=rf_usages.columns, index=cellbygene_df.columns)
+    losses = pd.DataFrame(losses.T, columns=rf_usages.columns, index=cellbygene_df.columns)
+      
     # Parse metadata
     gt = defaultdict(list)
     with open(metadata_file, "r") as f:
@@ -226,17 +258,48 @@ def cNMF_run(cellbygene_df, out_dir, out_name, cellbygene, cellbyspecies, metada
                 gt[p].append(gene)
 
     # Parse cNMF spectra scores
+    unnormalized_spectra_scores.columns = [f"pred_ecDNA_{col}" for col in unnormalized_spectra_scores.columns]
+    losses.columns = [f"pred_ecDNA_{col}" for col in losses.columns]
     spectra_scores.columns = [f"pred_ecDNA_{col}" for col in spectra_scores.columns]
     spectra_tpm.columns = [f"pred_ecDNA_{col}" for col in spectra_tpm.columns]
 
     ecDNA_species = spectra_scores.columns
     observed = {}
+
+    # Keep track of maximum value for the gene
+    used_genes = set()
+    all_genes = set()
+    max_species_gene = {}
+    max_species_gene_value = {}
+
+
     for species in ecDNA_species :
         observed[species] = []
-    for i, row in spectra_scores.iterrows() :
+    for i, row in losses.iterrows() :
+        all_genes.add(i)
         for species in ecDNA_species :
             if row[species] > score_cutoff :
                 observed[species].append(i)
+                used_genes.add(i)
+            if i in max_species_gene_value :
+                if row[species] > max_species_gene_value[i] :
+                    max_species_gene_value[i] = row[species]
+                    max_species_gene[i] = species
+            else :
+                max_species_gene_value[i] = row[species]
+                max_species_gene[i] = species
+
+    print("Distributed genes initially")
+
+
+    # Put all the ones who aren't in any one in an ecDNA
+    for empty_gene in all_genes - used_genes:
+        if empty_gene in max_species_gene :
+            observed[max_species_gene[empty_gene]].append(empty_gene)
+        else :
+            print(f"Warning: {empty_gene} not in any species")
+    print("Distributed genes into species")
+
 
     # Find how to rescale usage in terms of tpm
     # Assumes the lowest of the used genes is 1, and takes the average of the lowest and those 1.2 times away (incase there are slight deviations)
@@ -251,6 +314,8 @@ def cNMF_run(cellbygene_df, out_dir, out_name, cellbygene, cellbyspecies, metada
         min_tpm = np.min(tpm_values)
         near_min = tpm_values[tpm_values <= min_tpm * 1.2]
         usage_scale[species] = np.mean(near_min)
+
+    print("Made usage scale")
 
     # Now recreate a better spectra_tpm
     for species in ecDNA_species:
@@ -334,6 +399,8 @@ def cNMF_run(cellbygene_df, out_dir, out_name, cellbygene, cellbyspecies, metada
         print(f"Best score: {avg_jaccard}")
         return mapping, avg_jaccard
 
+    print("Mapping")
+
     mapping, best_jaccard = match_score(observed, gt)
 
     matched_observed = defaultdict(list)
@@ -347,6 +414,8 @@ def cNMF_run(cellbygene_df, out_dir, out_name, cellbygene, cellbyspecies, metada
         for species in val :
             species_to_gene[species].append(key)
 
+    print("Guessing extra genes")
+
     # Calculate extra genes from spectra
     spectra_consensus = pd.read_csv(f"{out_dir}/{out_name}/{out_name}.spectra.k_{num_ecDNA}.dt_{str(density_threshold).replace('.', '_')}.consensus.txt", sep = '\t', index_col = 0)
     spectra_consensus.index = "pred_ecDNA_" + spectra_consensus.index.astype(str)
@@ -359,12 +428,13 @@ def cNMF_run(cellbygene_df, out_dir, out_name, cellbygene, cellbyspecies, metada
         for gene in gene_list :
             gene_counts.loc[species, gene] = np.round(spectra_consensus.loc[species, gene]/min_val)
 
-
+    
     cellxspecies_df = pd.read_csv(cellbyspecies, sep = '\t', index_col = 0)
     usage_df.rename(columns=mapping, inplace=True)
     total_error = 0
     total_count = 0
 
+    print("Calculating error")
 
     plt.figure()
     for species in list(cellxspecies_df.columns) :
@@ -403,8 +473,6 @@ def cNMF_run(cellbygene_df, out_dir, out_name, cellbygene, cellbyspecies, metada
                 if row[gene] > 1 :
                     f.write(f"\t{gene}:\t{row[gene]-1}")
             f.write('\n')
-
-    shutil.rmtree(f"{out_dir}/{out_name}/cnmf_tmp")
 
     return len(usage_df.columns), best_jaccard, avg_count_error
 
@@ -467,6 +535,13 @@ for spec_dir in Path(run_dir).glob("*"):
         except Exception as e :
             print(f"Error: {e}")
             predicted_species_count, jaccard, avg_count_error = 0,0,0
+
+        try:
+            shutil.rmtree(f"{run_out_dir}/{out_name}/cnmf_tmp")
+            print("Deleted", f"{run_out_dir}/{out_name}/cnmf_tmp")
+        except Exception as e:
+            print(type(e).__name__, e)
+
         run_predicted_species_counts[out_name] = predicted_species_count
         run_jaccard[out_name] = jaccard
         run_count_err[out_name] = avg_count_error
@@ -481,7 +556,5 @@ for spec_dir in Path(run_dir).glob("*"):
 (pd.DataFrame(run_jaccard_list)).to_csv(run_jaccard_file, index = None, sep = '\t')
 (pd.DataFrame(run_count_err_list)).to_csv(run_count_err_file, index = None, sep = '\t')
 (pd.DataFrame(run_time_list)).to_csv(run_time_file, index = None, sep = '\t')
-
-
 
 

@@ -257,10 +257,9 @@ def cNMF_deconvolution(
     
     # print(spectra_scores)
     rf_usages = pd.read_csv(f"{log_dir}/{sample_name}/{sample_name}.usages.k_{num_ecDNA}.dt_{str(density_threshold).replace('.', '_')}.consensus.txt", sep = '\t', index_col = 0)
-    
+
     Y = cellbygene.values
     unnormalized_spectra_scores = efficient_ols_all_cols(rf_usages.values, Y, normalize_y = False)
-
 
     # print(cellbygene_df.head())
     print("Calculating loss")
@@ -286,7 +285,6 @@ def cNMF_deconvolution(
 
     unnormalized_spectra_scores = pd.DataFrame(unnormalized_spectra_scores.T, columns=rf_usages.columns, index=cellbygene.columns)
     losses = pd.DataFrame(losses.T, columns=rf_usages.columns, index=cellbygene.columns)
-
 
     # Parse cNMF spectra scores
     unnormalized_spectra_scores.columns = [f"pred_ecDNA_{col}" for col in unnormalized_spectra_scores.columns]
@@ -460,6 +458,7 @@ def _DEV_cNMF_deconvolution_ablation(
     unnormalized_spectra_scores = pd.DataFrame(unnormalized_spectra_scores.T, columns=rf_usages.columns, index=cellbygene.columns)
     losses = pd.DataFrame(losses.T, columns=rf_usages.columns, index=cellbygene.columns)
 
+    print(column_groups)
     return losses, unnormalized_spectra_scores
 
 
@@ -828,6 +827,7 @@ def combo_deconvolution(
         density_threshold = 0.1, 
         hier_ddist = 1.3,
         num_ecDNA = None,
+        tol = 0.99,
         seed = 10
 ) :
 
@@ -848,7 +848,7 @@ def combo_deconvolution(
     
     else :
         print("Detected Overlap")
-        return cNMF_deconvolution(cellbygene_df, sample_name, max_species = num_ecDNA, 
+        return cNMF_deconvolution(cellbygene_df, sample_name, max_species = num_ecDNA,tol = tol, 
             n_iter = n_iter, 
             error_w = error_w,
             score_cutoff = score_cutoff,
