@@ -185,8 +185,30 @@ def cNMF_deconvolution_cutoff(
   
     return final_species_to_gene, cell_by_ecDNA  
 
-# Uses ablation method (testing)
-def cNMF_deconvolution(
+'''
+ABLATION METHOD
+PARAMETERS:
+
+cellbygene_df: a pandas df with columns as genes and rows as cells. Should still include chromosomal 2
+sample_name: name for cNMF log 
+tol: after finding ecDNA count, recreate the matrix with very similar vectors grouped together within this cluster coefficient
+n_iter: number of times to run NMF per k
+error_w: weight for error when choosing k. Default is 0.25 
+score_cutoff: ablation score cutoff for inclusion
+ecDNA_remove_cutoff: normalized score cutoff for removing an ecDNA
+log_dir: where to store the cNMF logs
+density_threshold: density parameter for cNMF
+hier_ddist: if max_species is none, uses this as a parameter to decide maximum count to check
+max_species: number of ecDNA species to check up to. If none, uses hierarchical to figure it out
+num_ecDNA: set if known
+seed: random seed for cNMF
+
+RETURNS:
+
+species_by_gene: mapping of ecDNA species to genes
+cellbyecDNA: cell by ecDNA dataframe
+
+'''def cNMF_deconvolution(
         cellbygene_df, 
         sample_name, 
         tol = 0.99,
@@ -352,7 +374,7 @@ def cNMF_deconvolution(
     return final_species_to_gene, cell_by_ecDNA   
 
 
-
+# Used for testing ablation
 def _DEV_cNMF_deconvolution_ablation(
         cellbygene_df, 
         sample_name, 
@@ -462,253 +484,7 @@ def _DEV_cNMF_deconvolution_ablation(
     return losses, unnormalized_spectra_scores
 
 
-
-
-def _DEV_cNMF_deconvolution_shuffle(
-        cellbygene_df, 
-        sample_name, 
-        tol = 0.99,
-        n_iter = 50, 
-        error_w = 0.25,
-        score_cutoff = 0.1,
-        ecDNA_remove_cutoff = 0.01,
-        log_dir = "./temp", 
-        density_threshold = 0.1, 
-        hier_ddist = 1.3,
-        max_species = None, 
-        num_ecDNA = None,
-        seed = 10,
-        NO_ITERS = 200
-) :
-    print("Starting cNMF...")
-    os.makedirs(log_dir, exist_ok= True)
-
-    # Get rid of very very similar columns
-    keep_cols = []
-    column_groups = {}
-
-    for col in cellbygene_df.columns:
-        found_match = False
-
-        for rep in keep_cols:
-            if np.corrcoef(cellbygene_df[col], cellbygene_df[rep])[0, 1] > tol :
-                column_groups[rep].append(col)
-                found_match = True
-                break
-
-        if not found_match:
-            keep_cols.append(col)
-            column_groups[col] = [col]
-
-
-    # Decrease all by 2, and make none less than zero
-    cellbygene = cellbygene_df - 2
-    cellbygene = cellbygene.clip(lower=0)
-    # Export (needs to be an outputted csv otherwise we cannot)
-    cellbygene_path = f"{log_dir}/cellbygene_minus_chromosomal.tsv"
-    cellbygene.to_csv(cellbygene_path, sep = '\t')
-
-    if num_ecDNA is None :
-        num_ecDNA = _cNMF_find_k(max_species, cellbygene_df, hier_ddist, log_dir, sample_name, cellbygene_path, n_iter, seed, error_w)
-            
-    # Replace after finding k
-    cellbygene = cellbygene[keep_cols]
-    cellbygene.to_csv(cellbygene_path, sep = '\t')
-
-
-    # Silence certain printouts
-    out = StringIO()
-    err = StringIO()
-
-    cnmf_obj = cNMF(output_dir=log_dir, name=sample_name)
-    cnmf_obj.prepare(counts_fn=cellbygene_path, tpm_fn = cellbygene_path, components=num_ecDNA, n_iter=n_iter, seed=seed)
-   
-    input_counts = pd.read_csv(cellbygene_path, sep = '\t', index_col = 0)
-    adata = ad.AnnData(input_counts)
-    cnmf_obj.save_norm_counts(adata)
-    with redirect_stdout(out), redirect_stderr(err):
-        cnmf_obj.factorize(worker_i=0, total_workers=1)
-    cnmf_obj.combine()
-
-
-    cnmf_obj.consensus(k=num_ecDNA, density_threshold=density_threshold, close_clustergram_fig=True, refit_usage = False)
-    usage_df, spectra_scores, spectra_tpm, top_genes = cnmf_obj.load_results(K=num_ecDNA, density_threshold=density_threshold, norm_usage = False)
-    
-    # print(spectra_scores)
-    rf_usages = pd.read_csv(f"{log_dir}/{sample_name}/{sample_name}.usages.k_{num_ecDNA}.dt_{str(density_threshold).replace('.', '_')}.consensus.txt", sep = '\t', index_col = 0)
-    
-    unnormalized_spectra_scores = efficient_ols_all_cols(rf_usages.values, cellbygene.values, normalize_y = False)
-    unnormalized_spectra_scores = pd.DataFrame(unnormalized_spectra_scores.T, columns=rf_usages.columns, index=cellbygene.columns)
-
-    # print(cellbygene_df.head())
-    print("Calculating background")
-    #[ecDNA, gene, iter]
-    shuffled_values = np.zeros((len(cellbygene.columns),len(rf_usages.columns),NO_ITERS))
-    for it in range(NO_ITERS) :
-        cellbygene_df_shuffled = cellbygene.sample(frac=1)
-        random_spectra_scores = efficient_ols_all_cols(rf_usages.values, cellbygene_df_shuffled.values, normalize_y = False)
-        # for idx, colname in enumerate(rf_usages.columns) :
-        #     shuffled_values[colname].extend(random_spectra_scores[idx, :].tolist())
-        shuffled_values[:, :, it] = random_spectra_scores.T
-    return shuffled_values, unnormalized_spectra_scores
-
-
-def _DEV_cNMF_deconvolution_correlation(
-        cellbygene_df, 
-        sample_name, 
-        tol = 0.99,
-        n_iter = 50, 
-        error_w = 0.25,
-        score_cutoff = 0.1,
-        ecDNA_remove_cutoff = 0.01,
-        log_dir = "./temp", 
-        density_threshold = 0.1, 
-        hier_ddist = 1.3,
-        max_species = None, 
-        num_ecDNA = None,
-        seed = 10,
-        TEST_COL = 0,
-        NO_ITERS = 1000
-) :
-    print("Starting cNMF...")
-    os.makedirs(log_dir, exist_ok= True)
-
-    # Get rid of very very similar columns
-    keep_cols = []
-    column_groups = {}
-
-    for col in cellbygene_df.columns:
-        found_match = False
-
-        for rep in keep_cols:
-            if np.corrcoef(cellbygene_df[col], cellbygene_df[rep])[0, 1] > tol :
-                column_groups[rep].append(col)
-                found_match = True
-                break
-
-        if not found_match:
-            keep_cols.append(col)
-            column_groups[col] = [col]
-
-
-    # Decrease all by 2, and make none less than zero
-    cellbygene = cellbygene_df - 2
-    cellbygene = cellbygene.clip(lower=0)
-    # Export (needs to be an outputted csv otherwise we cannot)
-    cellbygene_path = f"{log_dir}/cellbygene_minus_chromosomal.tsv"
-    cellbygene.to_csv(cellbygene_path, sep = '\t')
-
-    if num_ecDNA is None :
-        num_ecDNA = _cNMF_find_k(max_species, cellbygene_df, hier_ddist, log_dir, sample_name, cellbygene_path, n_iter, seed, error_w)
-            
-    # Replace after finding k
-    cellbygene = cellbygene[keep_cols]
-    cellbygene.to_csv(cellbygene_path, sep = '\t')
-
-
-    # Silence certain printouts
-    out = StringIO()
-    err = StringIO()
-
-    cnmf_obj = cNMF(output_dir=log_dir, name=sample_name)
-    cnmf_obj.prepare(counts_fn=cellbygene_path, tpm_fn = cellbygene_path, components=num_ecDNA, n_iter=n_iter, seed=seed)
-   
-    input_counts = pd.read_csv(cellbygene_path, sep = '\t', index_col = 0)
-    adata = ad.AnnData(input_counts)
-    cnmf_obj.save_norm_counts(adata)
-    with redirect_stdout(out), redirect_stderr(err):
-        cnmf_obj.factorize(worker_i=0, total_workers=1)
-    cnmf_obj.combine()
-
-
-    cnmf_obj.consensus(k=num_ecDNA, density_threshold=density_threshold, close_clustergram_fig=True, refit_usage = False)
-    usage_df, spectra_scores, spectra_tpm, top_genes = cnmf_obj.load_results(K=num_ecDNA, density_threshold=density_threshold, norm_usage = False)
-    
-    # print(spectra_scores)
-    rf_usages = pd.read_csv(f"{log_dir}/{sample_name}/{sample_name}.usages.k_{num_ecDNA}.dt_{str(density_threshold).replace('.', '_')}.consensus.txt", sep = '\t', index_col = 0)
-    
-    unnormalized_spectra_scores = efficient_ols_all_cols(rf_usages.values, cellbygene.values, normalize_y = False)
-
-    # baselines = _get_baselines(rf_usages, cellbygene, NO_ITERS)
-
-    X = rf_usages.values                    # (cells × ecDNA)
-    Y = cellbygene.values                   # (cells × genes)
-    B = unnormalized_spectra_scores         # (ecDNA × genes)
-
-    n_ecDNA = X.shape[1]
-    n_genes = Y.shape[1]
-
-    corr_matrix = np.zeros((n_ecDNA, n_genes))
-
-    for k in range(n_ecDNA):
-
-        others = np.delete(np.arange(n_ecDNA), k)
-
-        # Predicted expression from all OTHER ecDNAs
-        Y_other = X[:, others] @ B[others, :]
-
-        # Residual after removing other ecDNAs
-        residual = Y - Y_other
-
-        # Correlate this ecDNA with each gene's residual
-        for g in range(n_genes):
-            corr_matrix[k, g], _ = pearsonr(X[:, k], residual[:, g])
-        
-                    
-    rf_usages.columns = np.arange(1, rf_usages.shape[1]+1)
-    unnormalized_spectra_scores = pd.DataFrame(unnormalized_spectra_scores.T, columns=rf_usages.columns, index=cellbygene.columns)
-    corr_df = pd.DataFrame(corr_matrix.T, columns=rf_usages.columns, index=cellbygene.columns)
-
-    return corr_df, unnormalized_spectra_scores
-
-
-
-
-def _get_baselines(rf_usages, cellbygene, NO_ITERS) :
-    X = rf_usages.values          # (cells × ecDNA)
-    Y = cellbygene.values         # (cells × genes)
-
-    n_cells, n_ecDNA = X.shape
-
-    baselines = defaultdict(list)
-    observed = {}
-
-    for k in range(n_ecDNA):
-
-        ecDNA_name = rf_usages.columns[k]
-
-        # ----------------------------
-        # Step 1: define other ecDNAs
-        # ----------------------------
-        others = np.delete(np.arange(n_ecDNA), k)
-
-        X_rest = X[:, others]
-        X_k = X[:, k]
-
-        # ----------------------------
-        # Step 2: FWL residualization
-        # ----------------------------
-        X_k_res = residualize(X_k.reshape(-1, 1), X_rest).ravel()
-        Y_res = residualize(Y, X_rest)
-
-        # ----------------------------
-        # Step 3: OBSERVED effect
-        # ----------------------------
-        beta_obs = fwl_beta(X_k_res, Y_res)
-        observed[ecDNA_name] = beta_obs
-
-        # ----------------------------
-        # Step 4: NULL via permutation
-        # ----------------------------
-        for it in range(NO_ITERS):
-
-            X_k_perm = np.random.permutation(X_k_res)
-
-            beta_perm = fwl_beta(X_k_perm, Y_res)
-
-            baselines[ecDNA_name].append(beta_perm)
-    
-
+# Find residual for ablation
 def residualize(Y, X):
     """
     Remove effect of X from Y.
@@ -927,7 +703,7 @@ def naive_deconvolution(
 
     return species_to_gene, cellbyecDNA
 
-
+# Find maximum value of k to test using hierarchical clustering
 def _cNMF_find_k(max_species, cellbygene_df, hier_ddist, log_dir, sample_name, cellbygene_path, n_iter, seed, error_w) :
     if max_species is None :
         embed = np.corrcoef(cellbygene_df, rowvar=False)
