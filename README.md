@@ -15,17 +15,6 @@ To use, download https://github.com/kevinyu2/Cassiopeia_ecDNA_sim first
 
 ```pipeline_v2.py``` : runs data simulation. Do not use ```pipeline.py```, this has since been depreciated
 
-```bash
-python $SCRIPT $OUT_DIR \
-    --runs 5 \
-    --species-max 5 \
-    --overlap-prop $OVERLAP_PROP \
-    --depth $DEPTH_VALUE  \
-    --coseg-type simulation \
-    --sim-mult 1.4 \
-    --const-comb \
-    --test-coseg \
-    --total-genes 20
 
 ### Deconvolution
 
@@ -34,13 +23,6 @@ python $SCRIPT $OUT_DIR \
 ```naive_hier.py``` : calls the naive hierarchical method on the data created
 
 ```cNMF_pipeline.py``` : calls the cNMF method on the data created
-
-```bash
-python your_script.py \
-    "$INPUT_DIR" \
-    "$OUT_DIR" \
-    --errorw 0.25
-
 
 ```combo.py``` : calls the combo method on the data created
 
@@ -58,3 +40,36 @@ implemented in https://github.com/JonesCompBioLab/scamp
 ```coseg_strength_corr.py``` : plot correlation vs cosegregation strength of simulation
 
 
+## Examples
+
+### Simulation
+
+
+```bash
+python pipeline_v2.py $OUT_DIR \
+    --runs 5 \
+    --species-max 5 \
+    --overlap-prop $OVERLAP_PROP \
+    --depth $DEPTH_VALUE  \
+    --coseg-type simulation \
+    --sim-mult 1.4 \
+    --const-comb \
+    --test-coseg \
+    --total-genes 20
+```
+
+For 5 runs of 1-5 species, ```OVERLAP_PROP``` overlap, ```DEPTH_VALUE``` depth (usually 0.25-2), simulation cosegregation (recommended), 20 total genes.
+```const-comb``` means non-varying cosegregation values (use unless testing correlation as a function of cosegregation)
+```--test-coseg``` means only having two species cosegregate. If not, lower levels of cosegregation are suggested
+
+### Deconvolution
+
+```bash
+python your_script.py \
+    "$INPUT_DIR" \
+    "$OUT_DIR" \
+    --errorw 0.25
+```
+
+```errorw``` denotes the importance of error in predicting species counts. This value has been tuned.
+Input should be the result of simulation, i.e. ```./fmax_0.1_overlap_0.4_extracounts_0.1_depth_1.5```
