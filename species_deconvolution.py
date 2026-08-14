@@ -208,7 +208,8 @@ RETURNS:
 species_by_gene: mapping of ecDNA species to genes
 cellbyecDNA: cell by ecDNA dataframe
 
-'''def cNMF_deconvolution(
+'''
+def cNMF_deconvolution(
         cellbygene_df, 
         sample_name, 
         tol = 0.99,

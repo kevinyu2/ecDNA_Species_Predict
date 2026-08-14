@@ -65,11 +65,30 @@ For 5 runs of 1-5 species, ```OVERLAP_PROP``` overlap, ```DEPTH_VALUE``` depth (
 ### Deconvolution
 
 ```bash
-python your_script.py \
+python (cNMF_pipeline.py, combo.py, hierarchical2.py, OR naive_hier.py) \
     "$INPUT_DIR" \
-    "$OUT_DIR" \
-    --errorw 0.25
+    "$OUT_DIR" 
+```
+Input should be the result of simulation, i.e. ```./fmax_0.1_overlap_0.4_extracounts_0.1_depth_1.5```
+
+### Plotting
+
+Edit the following lines in ```graph_results.py``` :
+
+
+```run_out_dir = [TODO]
+plot_out_dir = [TODO]
+
+# What to title these in the plots!
+folder_to_name = {
+    "cNMF_results_countprov_0_errorw_0.25" : "cNMF (errorw = 0.25)",
+    "combo_results_countprov_0_thresh_0.55" : "Combo (threshold = 0.55)",
+    "naive_results_countprov_0_thresh_0.75" : "Naive (threshold = 0.75)",
+    "hier_results_countprov_0_ddist_1.3" : "Hier (dummy weight = 1.3)"
+}
 ```
 
-```errorw``` denotes the importance of error in predicting species counts. This value has been tuned.
-Input should be the result of simulation, i.e. ```./fmax_0.1_overlap_0.4_extracounts_0.1_depth_1.5```
+```run_out_dir``` is the ```OUT_DIR``` from the deconvolution scripts. This script
+will plot all results in this folder. ```plot_out_dir``` is where the plots are saved.
+```folder_to_name``` should be edited, with keys denoting which folders within ```OUT_DIR``` to use,
+and values denoting the label of that method in the plots.
